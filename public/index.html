@@ -375,6 +375,113 @@
             border-radius: 99px;
             white-space: nowrap;
         }
+        /* Contador de NO LEIDOS: naranja = pendiente de revisar. */
+        .session-count.new {
+            color: #fff;
+            font-weight: 600;
+            background: var(--grad-amber);
+            border-color: transparent;
+            box-shadow: 0 2px 9px rgba(242,140,48,.4);
+            animation: badge-pop .32s cubic-bezier(.16,1.4,.5,1) both;
+        }
+        @keyframes badge-pop {
+            from { transform: scale(.55); opacity: 0; }
+            to   { transform: scale(1); opacity: 1; }
+        }
+        .session-item.unread .session-name { font-weight: 600; color: #fff; }
+        .session-item.unread .session-preview { color: #a9c6de; }
+
+        /* Accion rapida en la fila: solo aparece en hover y solo si YA esta
+           leida (marcar como no leida algo que ya lo esta no hace nada). */
+        .row-action {
+            width: 26px; height: 26px;
+            border: 1px solid var(--shell-line);
+            background: rgba(255,255,255,.06);
+            border-radius: 8px;
+            color: var(--shell-muted);
+            display: none;
+            place-items: center;
+            cursor: pointer;
+            padding: 0;
+            transition: color .16s, border-color .16s, background .16s;
+        }
+        .row-action svg { width: 14px; height: 14px; }
+        .row-action:hover {
+            color: #ffd0a3;
+            border-color: rgba(242,140,48,.5);
+            background: rgba(242,140,48,.16);
+        }
+        .session-item:hover .row-action { display: grid; }
+        .session-item.unread .row-action { display: none !important; }
+
+        /* Barra de filtros */
+        .filter-bar {
+            display: flex; gap: 6px;
+            padding: 0 16px 10px;
+        }
+        .chip {
+            font-family: var(--font);
+            font-size: 11.5px; font-weight: 500;
+            color: var(--shell-muted);
+            background: rgba(255,255,255,.05);
+            border: 1px solid var(--shell-line);
+            border-radius: 99px;
+            padding: 5px 12px;
+            cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: color .18s, background .18s, border-color .18s;
+        }
+        .chip:hover { color: var(--shell-ink); background: rgba(255,255,255,.09); }
+        .chip.on {
+            color: #fff;
+            background: rgba(242,140,48,.2);
+            border-color: rgba(242,140,48,.5);
+        }
+        .chip.on::before {
+            content: '';
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--kos-orange);
+        }
+        .chip:disabled { opacity: .4; cursor: default; }
+        .chip:disabled:hover { color: var(--shell-muted); background: rgba(255,255,255,.05); }
+
+        /* Contador de pendientes en el encabezado */
+        .pending-pill {
+            font-family: var(--mono);
+            font-size: 9.5px; font-weight: 600;
+            color: #ffd0a3;
+            background: rgba(242,140,48,.2);
+            border: 1px solid rgba(242,140,48,.4);
+            border-radius: 99px;
+            padding: 1px 7px;
+            letter-spacing: .04em;
+        }
+        .pending-pill:empty { display: none; }
+
+        /* Aviso efimero */
+        .toast {
+            position: fixed;
+            left: 50%; bottom: 26px;
+            transform: translate(-50%, 16px);
+            background: #0b2135;
+            color: #fff;
+            font-size: 13px; font-weight: 500;
+            padding: 10px 18px;
+            border-radius: 99px;
+            border: 1px solid rgba(255,255,255,.12);
+            box-shadow: 0 12px 34px rgba(0,0,0,.4);
+            display: flex; align-items: center; gap: 9px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .22s, transform .22s cubic-bezier(.16,1,.3,1);
+            z-index: 90;
+        }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
+        .toast i {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--kos-orange);
+            flex-shrink: 0;
+        }
 
         /* Pie de estadisticas */
         .sidebar-foot {
@@ -414,6 +521,14 @@
             color: var(--shell-muted);
             margin-top: 1px;
         }
+        /* Con gente sin responder la tarjeta se enciende en naranja, el mismo
+           color que el resto de lo pendiente en el panel. */
+        .stat-tile.pending {
+            background: rgba(242,140,48,.1);
+            border-color: rgba(242,140,48,.34);
+        }
+        .stat-tile.pending .value { color: #ffc78f; }
+        .stat-tile.pending .sub { color: #d9a577; }
 
         /* ================================================================
            LIENZO DE CONVERSACION
@@ -762,6 +877,11 @@
             animation: shimmer 1.5s infinite;
         }
         @keyframes shimmer { to { transform: translateX(100%); } }
+
+        /* Repintado silencioso: sin la entrada escalonada, para que el refresco
+           automatico no haga parpadear la lista entera cada 5 minutos. */
+        .sessions-list.no-anim .session-item { animation: none; }
+        .rail-btn.spinning svg { animation: spin .8s linear infinite; }
         .sk-avatar { width: 42px; height: 42px; border-radius: 13px; }
         .sk-line { height: 9px; }
         .sk-line + .sk-line { margin-top: 7px; width: 65%; }
@@ -837,7 +957,7 @@
 
     <div class="rail-spacer"></div>
 
-    <button class="rail-btn" onclick="reloadAll()" aria-label="Actualizar">
+    <button class="rail-btn" id="refreshBtn" onclick="reloadAll()" aria-label="Actualizar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/>
             <path d="M20.5 3.5V9H15"/>
@@ -856,7 +976,10 @@
 <!-- ===================== SIDEBAR ===================== -->
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-head">
-        <div class="sidebar-eyebrow"><i class="live-dot"></i><span id="channelLabel">WhatsApp</span></div>
+        <div class="sidebar-eyebrow">
+            <i class="live-dot"></i><span id="channelLabel">WhatsApp</span>
+            <span class="pending-pill" id="pendingLabel"></span>
+        </div>
         <div class="sidebar-title">Chat<em>Room</em></div>
     </div>
 
@@ -870,18 +993,23 @@
         </div>
     </div>
 
+    <div class="filter-bar">
+        <button class="chip" id="filterChip" onclick="togglePendingFilter()">Solo pendientes</button>
+        <button class="chip" id="readAllChip" onclick="markAllRead()">Marcar todas leídas</button>
+    </div>
+
     <div class="sessions-list scroll scroll-dark" id="sessionsList"></div>
 
     <div class="sidebar-foot">
-        <div class="stat-tile">
+        <div class="stat-tile" id="tile-wa">
             <div class="label"><i></i>WhatsApp</div>
-            <div class="value" id="stats-wa-msgs">—</div>
-            <div class="sub" id="stats-wa-sessions">— chats</div>
+            <div class="value" id="pend-wa">—</div>
+            <div class="sub" id="pend-wa-sub">—</div>
         </div>
-        <div class="stat-tile amber">
+        <div class="stat-tile amber" id="tile-web">
             <div class="label"><i></i>Web</div>
-            <div class="value" id="stats-web-msgs">—</div>
-            <div class="sub" id="stats-web-sessions">— chats</div>
+            <div class="value" id="pend-web">—</div>
+            <div class="sub" id="pend-web-sub">—</div>
         </div>
     </div>
 </aside>
@@ -909,12 +1037,21 @@
             <div class="chat-header-name" id="chatName">—</div>
             <div class="chat-header-info" id="chatInfo"></div>
         </div>
+        <button class="icon-btn" onclick="markUnreadCurrent()" title="Marcar como no leído" aria-label="Marcar como no leído">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .5 4.2 1.2M21.5 12s-1.2 2.2-3.3 4"/>
+                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                <path d="M3.5 3.5l17 17"/>
+            </svg>
+        </button>
     </header>
 
     <div class="chat-scroll scroll" id="chatScroll">
         <div class="thread" id="thread"></div>
     </div>
 </main>
+
+<div class="toast" id="toast"><i></i><span id="toastText"></span></div>
 
 <script>
 let currentCollection = 'wa_chats';
@@ -923,6 +1060,149 @@ let searchTimeout = null;
 // id -> sesion, para que los resultados de busqueda puedan mostrar el nombre
 // del contacto (/api/search solo devuelve sessionId).
 let sessionsCache = {};
+// Sesiones por coleccion. Se cargan las dos aunque solo se vea una, para poder
+// encender el punto de pendientes del canal que no estas mirando.
+let sessionsByCol = {};
+let pendingOnly = false;
+
+/* --- Estado de lectura -------------------------------------------------
+   server.js es de solo lectura sobre Atlas (ver CLAUDE.md), asi que lo leido
+   vive en el navegador. Por conversacion se guarda { r, p }:
+     r = cuantos mensajes estaban leidos
+     p = el r anterior, para que "marcar como no leido" pueda devolverse ahi
+   No leidos = messageCount - r. Una conversacion que nunca se abrio tiene
+   r = 0, o sea que entra como pendiente completa.
+   Consecuencia: el estado es por navegador, no se comparte entre equipos.  */
+const READS_KEY = 'kx-reads';
+let reads = {};
+try { reads = JSON.parse(localStorage.getItem(READS_KEY) || '{}') || {}; } catch { reads = {}; }
+function saveReads() { try { localStorage.setItem(READS_KEY, JSON.stringify(reads)); } catch {} }
+
+function unreadCount(s) {
+    if (!s) return 0;
+    const st = reads[s.id];
+    return Math.max(0, (s.messageCount || 0) - (st ? st.r : 0));
+}
+
+function findSession(id) {
+    for (const col of Object.keys(sessionsByCol)) {
+        const hit = (sessionsByCol[col] || []).find(s => s.id === id);
+        if (hit) return hit;
+    }
+    return null;
+}
+
+function channelUnread(col) {
+    return (sessionsByCol[col] || []).filter(s => unreadCount(s) > 0).length;
+}
+
+function markRead(s) {
+    const st = reads[s.id] || { r: 0, p: 0 };
+    if (st.r === s.messageCount) {
+        // Ya estaba al dia antes de abrirla: el punto de retorno pasa a ser
+        // "sin pendientes". Si no, quedaria el de la primera lectura y marcarla
+        // como no leida mostraria la conversacion entera como mensajes nuevos.
+        if (st.p !== st.r) { reads[s.id] = { r: st.r, p: st.r }; saveReads(); }
+        return;
+    }
+    reads[s.id] = { r: s.messageCount, p: st.r };
+    saveReads();
+}
+
+function markUnread(id) {
+    const s = findSession(id);
+    if (!s) return;
+    const st = reads[id] || { r: 0, p: 0 };
+    // Vuelve al conteo previo a la ultima apertura: si habian llegado 3
+    // mensajes nuevos, quedan esos 3 pendientes otra vez.
+    let target = st.p;
+    // Si ya estaba al dia antes de abrirla, deja al menos uno pendiente; si no,
+    // el boton no cambiaria nada visible.
+    if (target >= s.messageCount) target = s.messageCount - 1;
+    target = Math.max(0, target);
+    reads[id] = { r: target, p: target };
+    saveReads();
+
+    if (pendingOnly) renderSessions();
+    else { refreshRow(id); updateCounters(); }
+    showToast('Marcado como no leído');
+}
+
+function markUnreadCurrent() {
+    if (currentSession) markUnread(currentSession);
+}
+
+function markAllRead() {
+    const all = sessionsByCol[currentCollection] || [];
+    let n = 0;
+    all.forEach(s => { if (unreadCount(s) > 0) { markRead(s); n++; } });
+    if (!n) return;
+    renderSessions();
+    showToast(n === 1 ? '1 conversación marcada como leída'
+                      : n + ' conversaciones marcadas como leídas');
+}
+
+function togglePendingFilter() {
+    pendingOnly = !pendingOnly;
+    document.getElementById('filterChip').classList.toggle('on', pendingOnly);
+    const input = document.getElementById('searchInput');
+    if (input.value.trim()) input.value = '';   // el filtro reemplaza la busqueda
+    renderSessions();
+}
+
+// Actualiza el contador de una sola fila, sin repintar la lista (repintar
+// perderia el resaltado de la conversacion abierta y relanzaria la animacion).
+function refreshRow(id) {
+    const row = document.querySelector(`.session-item[data-id="${id}"]`);
+    const s = findSession(id);
+    if (!row || !s) return;
+    const n = unreadCount(s);
+    row.classList.toggle('unread', n > 0);
+    const badge = row.querySelector('.session-count');
+    if (badge) {
+        badge.textContent = n;
+        badge.style.display = n > 0 ? '' : 'none';
+    }
+}
+
+function updateCounters() {
+    const pend = channelUnread(currentCollection);
+    const label = document.getElementById('pendingLabel');
+    if (label) label.textContent = pend ? pend + (pend === 1 ? ' pendiente' : ' pendientes') : '';
+    toggleActivity('wa_chats', channelUnread('wa_chats') > 0);
+    toggleActivity('wa_chats_web', channelUnread('wa_chats_web') > 0);
+    const readAll = document.getElementById('readAllChip');
+    if (readAll) readAll.disabled = pend === 0;
+    updateTile('wa', 'wa_chats');
+    updateTile('web', 'wa_chats_web');
+}
+
+// Las tarjetas del pie cuentan PERSONAS sin responder (conversaciones con al
+// menos un mensaje sin leer), no mensajes.
+function updateTile(key, col) {
+    const tile = document.getElementById('tile-' + key);
+    const val = document.getElementById('pend-' + key);
+    const sub = document.getElementById('pend-' + key + '-sub');
+    if (!tile || !val || !sub) return;
+
+    const total = (sessionsByCol[col] || []).length;
+    const pending = channelUnread(col);
+
+    val.textContent = pending;
+    sub.textContent = pending > 0 ? 'sin responder'
+                    : total ? 'todo al día'
+                    : 'sin chats';
+    tile.classList.toggle('pending', pending > 0);
+}
+
+let toastTimer = null;
+function showToast(msg) {
+    const el = document.getElementById('toast');
+    document.getElementById('toastText').textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
 
 async function fetchAPI(endpoint, params = {}) {
     const query = new URLSearchParams(params);
@@ -1016,21 +1296,6 @@ function contactIdentifier(s, isWeb) {
     return 'ID: ' + s.sessionId;   // user_id identity, no phone available
 }
 
-async function loadStats() {
-    try {
-        const stats = await fetchAPI('stats');
-        const wa = stats.wa_chats || { sessions: 0, messages: 0 };
-        const web = stats.wa_chats_web || { sessions: 0, messages: 0 };
-        const n = v => Number(v || 0).toLocaleString('es-CO');
-        document.getElementById('stats-wa-msgs').textContent = n(wa.messages);
-        document.getElementById('stats-wa-sessions').textContent = n(wa.sessions) + ' chats';
-        document.getElementById('stats-web-msgs').textContent = n(web.messages);
-        document.getElementById('stats-web-sessions').textContent = n(web.sessions) + ' chats';
-        toggleActivity('wa_chats', wa.sessions > 0);
-        toggleActivity('wa_chats_web', web.sessions > 0);
-    } catch {}
-}
-
 function toggleActivity(col, on) {
     const btn = document.querySelector(`.rail-btn[data-col="${col}"]`);
     if (btn) btn.classList.toggle('has-activity', !!on);
@@ -1051,9 +1316,19 @@ function sessionCard(s, isWeb, index, opts = {}) {
     const displayName = sessionLabel(s, isWeb);
     const subtitle = s.name ? contactIdentifier(s, isWeb) : '';
     const delay = Math.min(index * 22, 400);
+    const unread = unreadCount(s);
+    // El contador queda siempre en el DOM aunque este oculto: refreshRow lo
+    // muestra u oculta sin tener que repintar la fila entera.
     const badge = opts.badge !== undefined
         ? opts.badge
-        : `<div class="session-count">${s.messageCount}</div>`;
+        : `<div class="session-count new"${unread ? '' : ' style="display:none"'}>${unread}</div>
+           <button class="row-action" onclick="event.stopPropagation();markUnread('${s.id}')"
+                   title="Marcar como no leído" aria-label="Marcar como no leído">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                   <path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .5 4.2 1.2M21.5 12s-1.2 2.2-3.3 4"/>
+                   <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3.5 3.5l17 17"/>
+               </svg>
+           </button>`;
     const stamp = opts.hideDate ? '' :
         `<div class="session-date" title="${escapeAttr(formatFullDate(s.lastSeen || s.startedAt))}">${formatDate(s.lastSeen || s.startedAt)}</div>`;
     const preview = opts.preview !== undefined
@@ -1061,7 +1336,7 @@ function sessionCard(s, isWeb, index, opts = {}) {
         : `${s.lastType === 'ai' ? '<b>Bot:</b> ' : ''}${escapeHtml(truncate(s.lastMessage, 42))}`;
 
     return `
-    <div class="session-item" data-id="${s.id}" style="animation-delay:${delay}ms" onclick="openSession('${s.id}')">
+    <div class="session-item ${unread ? 'unread' : ''}" data-id="${s.id}" style="animation-delay:${delay}ms" onclick="openSession('${s.id}')">
         <div class="session-avatar ${isWeb ? 'web' : ''}">${escapeHtml(getInitials(s.name || s.sessionId))}</div>
         <div class="session-info">
             <div class="session-name">${escapeHtml(displayName)}</div>
@@ -1072,24 +1347,58 @@ function sessionCard(s, isWeb, index, opts = {}) {
     </div>`;
 }
 
+// Trae las dos colecciones y pinta la actual. Hacen falta ambas para contar
+// los pendientes del canal que no esta a la vista.
 async function loadSessions() {
     const list = document.getElementById('sessionsList');
     list.innerHTML = skeletonList();
 
     try {
-        const sessions = await fetchAPI('sessions', { collection: currentCollection });
-        sessionsCache = {};
-        sessions.forEach(s => { sessionsCache[s.id] = s; });
-
-        if (!sessions.length) {
-            list.innerHTML = '<div class="loading"><p>No hay conversaciones en este canal</p></div>';
-            return;
+        const [wa, web] = await Promise.all([
+            fetchAPI('sessions', { collection: 'wa_chats' }),
+            fetchAPI('sessions', { collection: 'wa_chats_web' })
+        ]);
+        // Si Mongo falla, /api/sessions responde {error} con status 500. Ese
+        // objeto es "truthy", asi que sin esta comprobacion entraria como si
+        // fuera la lista y reventaria despues en .filter/.length.
+        if (!Array.isArray(wa) || !Array.isArray(web)) {
+            throw new Error((wa && wa.error) || (web && web.error) || 'respuesta inesperada del servidor');
         }
-
-        const isWeb = currentCollection === 'wa_chats_web';
-        list.innerHTML = sessions.map((s, i) => sessionCard(s, isWeb, i)).join('');
+        sessionsByCol = { wa_chats: wa, wa_chats_web: web };
+        renderSessions();
     } catch (err) {
         list.innerHTML = '<div class="loading"><p>Error: ' + escapeHtml(err.message) + '</p></div>';
+    }
+}
+
+function renderSessions(opts = {}) {
+    const list = document.getElementById('sessionsList');
+    const all = sessionsByCol[currentCollection] || [];
+
+    sessionsCache = {};
+    all.forEach(s => { sessionsCache[s.id] = s; });
+    updateCounters();
+    // quiet = viene del refresco automatico, no de una accion del usuario.
+    list.classList.toggle('no-anim', !!opts.quiet);
+
+    if (!all.length) {
+        list.innerHTML = '<div class="loading"><p>No hay conversaciones en este canal</p></div>';
+        return;
+    }
+
+    const shown = pendingOnly ? all.filter(s => unreadCount(s) > 0) : all;
+    if (!shown.length) {
+        list.innerHTML = '<div class="loading"><p>Nada pendiente en este canal.<br>Todo al día.</p></div>';
+        return;
+    }
+
+    const isWeb = currentCollection === 'wa_chats_web';
+    list.innerHTML = shown.map((s, i) => sessionCard(s, isWeb, i)).join('');
+
+    // Conservar el resaltado de la conversacion abierta tras un repintado.
+    if (currentSession) {
+        const row = list.querySelector(`.session-item[data-id="${currentSession}"]`);
+        if (row) row.classList.add('active');
     }
 }
 
@@ -1177,6 +1486,15 @@ async function openSession(docId) {
         thread.classList.add('has-msgs');
         const scroller = document.getElementById('chatScroll');
         scroller.scrollTop = scroller.scrollHeight;
+
+        // Leida. Se usa el conteo que acaba de devolver /api/messages, que es
+        // el mismo filterMessages() de /api/sessions, y se refresca el cache
+        // por si llegaron mensajes despues de cargar la lista.
+        const cached = findSession(docId);
+        if (cached) cached.messageCount = messages.length;
+        markRead(cached || { id: docId, messageCount: messages.length });
+        refreshRow(docId);
+        updateCounters();
     } catch (err) {
         thread.innerHTML = '<div class="loading"><p>Error: ' + escapeHtml(err.message) + '</p></div>';
     }
@@ -1306,7 +1624,10 @@ function switchTab(el) {
     document.body.classList.remove('viewing-chat');
     document.getElementById('searchInput').value = '';
 
-    loadSessions();
+    // Las dos colecciones ya estan en memoria; el boton de actualizar es el
+    // que vuelve a consultar el servidor.
+    if (sessionsByCol[currentCollection]) renderSessions();
+    else loadSessions();
 }
 
 function handleSearch(q) {
@@ -1353,9 +1674,86 @@ function handleSearch(q) {
     }, 300);
 }
 
+/* --- Refresco automatico ----------------------------------------------
+   Cada 5 minutos se vuelven a pedir las dos colecciones. Es un refresco
+   silencioso: no pone el esqueleto de carga, no pierde la busqueda ni el
+   filtro ni la conversacion abierta, y no marca nada como leido. Los mensajes
+   nuevos suben solos el contador de pendientes porque messageCount crece.   */
+const REFRESH_MS = 5 * 60 * 1000;
+let refreshTimer = null;
+let refreshing = false;
+
+// Huella de la lista visible: si no cambia, no se repinta nada.
+function sessionsSignature() {
+    return (sessionsByCol[currentCollection] || [])
+        .map(s => s.id + ':' + s.messageCount + ':' + (s.lastSeen || ''))
+        .join('|');
+}
+
+function totalPending() {
+    return channelUnread('wa_chats') + channelUnread('wa_chats_web');
+}
+
+async function refreshSessions(opts = {}) {
+    if (refreshing) return;
+    refreshing = true;
+    const btn = document.getElementById('refreshBtn');
+    if (btn) btn.classList.add('spinning');
+
+    const before = sessionsSignature();
+    const pendingBefore = totalPending();
+
+    try {
+        const [wa, web] = await Promise.all([
+            fetchAPI('sessions', { collection: 'wa_chats' }),
+            fetchAPI('sessions', { collection: 'wa_chats_web' })
+        ]);
+        // Un tropiezo de Mongo devuelve {error} con status 500. Conservar lo
+        // que ya esta en pantalla y reintentar en 5 minutos es mejor que
+        // vaciar la lista o dejar el estado corrupto.
+        if (!Array.isArray(wa) || !Array.isArray(web)) return;
+        sessionsByCol = { wa_chats: wa, wa_chats_web: web };
+
+        // Con una busqueda en pantalla, repintar borraria los resultados:
+        // solo se actualizan los contadores.
+        if (document.getElementById('searchInput').value.trim()) {
+            updateCounters();
+        } else if (opts.force || sessionsSignature() !== before) {
+            renderSessions({ quiet: !!opts.quiet });
+        } else {
+            updateCounters();
+        }
+
+        const nuevas = totalPending() - pendingBefore;
+        if (opts.quiet && nuevas > 0) {
+            showToast(nuevas === 1 ? '1 conversación con mensajes nuevos'
+                                   : nuevas + ' conversaciones con mensajes nuevos');
+        }
+    } catch {
+        // Un fallo puntual de red no debe romper el ciclo ni ensuciar la vista;
+        // el siguiente intento entra en 5 minutos.
+    } finally {
+        refreshing = false;
+        if (btn) btn.classList.remove('spinning');
+    }
+}
+
+function startAutoRefresh() {
+    clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => refreshSessions({ quiet: true }), REFRESH_MS);
+}
+
+// Sin sentido consultar con la pestaña en segundo plano; al volver se refresca
+// de inmediato en vez de esperar a que se cumpla el ciclo.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearInterval(refreshTimer);
+    else { refreshSessions({ quiet: true }); startAutoRefresh(); }
+});
+
 function reloadAll() {
-    loadSessions();
-    loadStats();
+    // Manual: repinta siempre, para que se note que hizo algo.
+    refreshSessions({ force: true });
+    startAutoRefresh();   // reinicia la cuenta de los 5 minutos
 }
 
 /* --- Tema ------------------------------------------------------------- */
@@ -1395,7 +1793,7 @@ let saved = 'light';
 try { saved = localStorage.getItem('kx-theme') || 'light'; } catch {}
 applyTheme(saved);
 loadSessions();
-loadStats();
+startAutoRefresh();
 </script>
 
 </body>
