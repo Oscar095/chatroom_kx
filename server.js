@@ -6,6 +6,16 @@ const { MongoClient, ObjectId } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// En Azure no hay .env: las variables van como Application settings. Sin este
+// chequeo, new MongoClient(undefined) revienta con un "Cannot read properties
+// of undefined (reading 'startsWith')" que no dice cual falta.
+for (const key of ['MONGO_URI', 'MONGO_DB']) {
+    if (!process.env[key]) {
+        console.error(`Falta la variable de entorno ${key}. En local va en chatroom/.env; en Azure, en Configuration > Application settings.`);
+        process.exit(1);
+    }
+}
+
 const client = new MongoClient(process.env.MONGO_URI);
 let db;
 
