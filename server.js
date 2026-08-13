@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const { MongoClient, ObjectId } = require('mongodb');
+const pedidos = require('./pedidos');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -50,6 +51,9 @@ function filterMessages(messages) {
         .filter(m => m.type !== 'tool')
         .map(m => ({
             type: m.type || 'human',
+            // Marcado por /api/send: distingue lo que escribió el asesor de lo
+            // que respondió el bot, aunque los dos se guarden como 'ai'.
+            sentBy: m.data?.additional_kwargs?.sentBy || null,
             content: cleanContent(m.data?.content)
         }))
         .filter(m => m.content.trim());
@@ -102,6 +106,15 @@ async function loadMedia(sessionId) {
     }
 }
 
+// Las únicas colecciones de chat que las rutas aceptan. Sin esta lista, el
+// parámetro ?collection= dejaría leer cualquier colección de la base — entre
+// ellas wa_media, que devolvería los base64 completos.
+const CHAT_COLLECTIONS = ['wa_chats', 'wa_chats_web'];
+function chatCollection(name) {
+    return CHAT_COLLECTIONS.includes(name) ? name : CHAT_COLLECTIONS[0];
+}
+
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // GET /api/contacts - phone -> { name, lastSeen }
@@ -112,7 +125,7 @@ app.get('/api/contacts', async (req, res) => {
 // GET /api/sessions?collection=wa_chats
 app.get('/api/sessions', async (req, res) => {
     try {
-        const col = req.query.collection || 'wa_chats';
+        const col = chatCollection(req.query.collection);
         const docs = await db.collection(col).find({}).toArray();
 
         const contacts = await loadContacts();
@@ -124,15 +137,31 @@ app.get('/api/sessions', async (req, res) => {
             // identifier guaranteed to exist and round-trip through the URL.
             const sid = doc.sessionId == null ? null : String(doc.sessionId);
             const contact = sid ? contacts[sid] : null;
+            const lastSeen = contact ? contact.lastSeen : null;
+
+            // Archiving is a flag on the chat document, never a move: the
+            // LangChain memory node keeps $push-ing into the same doc, so a
+            // moved conversation would make the bot lose the customer's history.
+            // If the customer writes again after being archived, the chat goes
+            // back to the inbox on its own - the conversation clearly did not end.
+            const archivedAt = doc.archivedAt || null;
+            const reopened = !!(archivedAt && lastSeen &&
+                new Date(lastSeen) > new Date(archivedAt));
+
             return {
                 id: doc._id.toString(),
                 sessionId: sid,
                 name: contact ? contact.name : null,
                 username: contact ? contact.username : null,
+                collection: col,
+                archived: !!archivedAt && !reopened,
+                archivedAt,
+                reopened,
+                mode: doc.mode === 'manual' ? 'manual' : 'auto',
                 // The chat memory stores no per-message timestamps. The ObjectId
                 // gives the conversation start; contacts.lastSeen the last message.
                 startedAt: doc._id.getTimestamp().toISOString(),
-                lastSeen: contact ? contact.lastSeen : null,
+                lastSeen,
                 messageCount: filtered.length,
                 lastMessage: lastMsg ? lastMsg.content : '',
                 lastType: lastMsg ? lastMsg.type : ''
@@ -152,7 +181,7 @@ app.get('/api/sessions', async (req, res) => {
 // Falls back to sessionId lookup for older callers.
 app.get('/api/messages', async (req, res) => {
     try {
-        const col = req.query.collection || 'wa_chats';
+        const col = chatCollection(req.query.collection);
         const { id, sessionId } = req.query;
 
         let doc = null;
@@ -178,6 +207,8 @@ app.get('/api/messages', async (req, res) => {
             phoneNumber: contact ? contact.phoneNumber : null,
             startedAt: doc._id.getTimestamp().toISOString(),
             lastSeen: contact ? contact.lastSeen : null,
+            archivedAt: doc.archivedAt || null,
+            mode: doc.mode === 'manual' ? 'manual' : 'auto',
             messages: filterMessages(doc.messages),
             media: await loadMedia(sid)
         });
@@ -213,10 +244,274 @@ app.get('/api/media/:id', async (req, res) => {
     }
 });
 
+// POST /api/archive  { collection, id, archived }
+// Marca la conversación como archivada escribiendo `archivedAt` en el documento.
+// Es la única ruta que escribe en Atlas: no mueve ni borra nada, así que se
+// puede deshacer y el bot no pierde la memoria de ese cliente.
+app.post('/api/archive', async (req, res) => {
+    try {
+        const { collection, id, archived } = req.body || {};
+        if (!CHAT_COLLECTIONS.includes(collection)) {
+            return res.status(400).json({ error: 'coleccion invalida' });
+        }
+        if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'id invalido' });
+
+        const archivar = archived !== false;
+        const result = await db.collection(collection).updateOne(
+            { _id: new ObjectId(id) },
+            archivar
+                ? { $set: { archivedAt: new Date().toISOString() } }
+                : { $unset: { archivedAt: '' } }
+        );
+        if (!result.matchedCount) return res.status(404).json({ error: 'No encontrado' });
+
+        res.json({ ok: true, archived: archivar });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/contacts/list - la agenda completa, un registro por contacto con
+// todo lo que se sabe de él y el enlace a su conversación.
+app.get('/api/contacts/list', async (req, res) => {
+    try {
+        const docs = await db.collection('contacts').find({}).toArray();
+
+        // sessionId -> chat, para poder abrir la conversación desde la agenda.
+        const chats = {};
+        for (const col of CHAT_COLLECTIONS) {
+            const found = await db.collection(col)
+                .find({}, { projection: { sessionId: 1, messages: 1, archivedAt: 1 } })
+                .toArray();
+            for (const d of found) {
+                const sid = d.sessionId == null ? null : String(d.sessionId);
+                if (!sid) continue;
+                chats[sid] = {
+                    id: d._id.toString(),
+                    collection: col,
+                    messageCount: filterMessages(d.messages).length,
+                    archived: !!d.archivedAt
+                };
+            }
+        }
+
+        // Cuántos archivos mandó cada contacto, para saber de un vistazo quién
+        // envió arte sin tener que abrir la conversación.
+        const media = {};
+        try {
+            const grouped = await db.collection('wa_media')
+                .aggregate([{ $group: { _id: '$sessionId', n: { $sum: 1 } } }]).toArray();
+            for (const g of grouped) media[String(g._id)] = g.n;
+        } catch {
+            // La colección no existe hasta que llega la primera imagen
+        }
+
+        const list = docs.map(d => {
+            const phone = String(d.phone);
+            const chat = chats[phone] || null;
+            return {
+                id: d._id.toString(),
+                // Ojo: `phone` es la identidad de sesión, no un teléfono.
+                // El número real del cliente es phoneNumber (ver CLAUDE.md).
+                phone,
+                name: d.name || null,
+                email: d.email || null,
+                phoneNumber: d.phoneNumber || null,
+                username: d.username || null,
+                businessPhone: d.businessPhone || null,
+                // Los contactos guardados antes de que existiera `channel` no
+                // lo traen; se deduce de en qué colección está su conversación.
+                channel: d.channel ||
+                    (chat ? (chat.collection === 'wa_chats_web' ? 'web' : 'whatsapp') : null),
+                lastSeen: d.lastSeen || null,
+                createdAt: d._id.getTimestamp().toISOString(),
+                chat,
+                mediaCount: media[phone] || 0
+            };
+        });
+
+        // Alfabético por nombre; los que aún no tienen nombre, al final.
+        list.sort((a, b) =>
+            (a.name || '￿').localeCompare(b.name || '￿', 'es', { sensitivity: 'base' }));
+        res.json(list);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/mode  { collection, id, mode }
+// 'manual' hace que el bot deje de responderle a ese cliente; 'auto' lo devuelve.
+// Lo lee el nodo "¿Modo Manual?" del workflow teams_chat_bot.
+app.post('/api/mode', async (req, res) => {
+    try {
+        const { collection, id, mode } = req.body || {};
+        if (!CHAT_COLLECTIONS.includes(collection)) {
+            return res.status(400).json({ error: 'coleccion invalida' });
+        }
+        if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'id invalido' });
+        if (mode !== 'manual' && mode !== 'auto') {
+            return res.status(400).json({ error: 'mode debe ser manual o auto' });
+        }
+        // El widget web es petición/respuesta: si el bot no contesta, el visitante
+        // se queda esperando y no hay forma de escribirle después.
+        if (collection === 'wa_chats_web') {
+            return res.status(400).json({ error: 'el chat web no admite modo manual' });
+        }
+
+        const result = await db.collection(collection).updateOne(
+            { _id: new ObjectId(id) },
+            mode === 'manual'
+                ? { $set: { mode: 'manual', manualSince: new Date().toISOString() } }
+                : { $unset: { mode: '', manualSince: '' } }
+        );
+        if (!result.matchedCount) return res.status(404).json({ error: 'No encontrado' });
+
+        res.json({ ok: true, mode });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/send  { collection, id, text }
+// Manda el mensaje del asesor a n8n (que lo entrega por WhatsApp) y solo si
+// Meta lo aceptó lo agrega a la memoria del chat. El orden importa: si se
+// guardara primero, el panel mostraría mensajes que el cliente nunca recibió.
+app.post('/api/send', async (req, res) => {
+    try {
+        const { collection, id, text } = req.body || {};
+        if (!CHAT_COLLECTIONS.includes(collection)) {
+            return res.status(400).json({ error: 'coleccion invalida' });
+        }
+        if (collection === 'wa_chats_web') {
+            return res.status(400).json({ error: 'no se puede escribirle al chat web' });
+        }
+        if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'id invalido' });
+
+        const cuerpo = String(text || '').trim();
+        if (!cuerpo) return res.status(400).json({ error: 'el mensaje esta vacio' });
+        // Tope de la API de WhatsApp para mensajes de texto.
+        if (cuerpo.length > 4096) return res.status(400).json({ error: 'el mensaje supera 4096 caracteres' });
+
+        if (!process.env.N8N_SEND_URL || !process.env.N8N_SEND_TOKEN) {
+            return res.status(503).json({ error: 'falta N8N_SEND_URL o N8N_SEND_TOKEN en el .env' });
+        }
+
+        const doc = await db.collection(collection).findOne({ _id: new ObjectId(id) });
+        if (!doc) return res.status(404).json({ error: 'No encontrado' });
+        if (doc.sessionId == null) {
+            return res.status(400).json({ error: 'esta conversacion no tiene identidad, no se le puede escribir' });
+        }
+        if (doc.mode !== 'manual') {
+            return res.status(409).json({ error: 'pon la conversacion en Manual antes de escribir' });
+        }
+
+        let respuesta;
+        try {
+            const r = await fetch(process.env.N8N_SEND_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-chatroom-token': process.env.N8N_SEND_TOKEN
+                },
+                body: JSON.stringify({ to: String(doc.sessionId), text: cuerpo }),
+                signal: AbortSignal.timeout(20000)
+            });
+            respuesta = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                return res.status(502).json({ error: respuesta.error || 'n8n respondio ' + r.status });
+            }
+        } catch (err) {
+            return res.status(502).json({ error: 'no se pudo contactar n8n: ' + err.message });
+        }
+
+        if (!respuesta.ok) {
+            // Lo más común aquí es la ventana de 24 h de Meta ya vencida.
+            return res.status(502).json({ error: respuesta.error || 'WhatsApp no acepto el mensaje' });
+        }
+
+        // Se guarda como 'ai' porque desde el lado del cliente es el negocio
+        // quien habla; así el bot lo lee como propio al volver a automático.
+        await db.collection(collection).updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $push: {
+                    messages: {
+                        type: 'ai',
+                        data: {
+                            content: cuerpo,
+                            tool_calls: [],
+                            invalid_tool_calls: [],
+                            additional_kwargs: { sentBy: 'asesor' },
+                            response_metadata: {}
+                        }
+                    }
+                }
+            }
+        );
+
+        res.json({ ok: true, id: respuesta.id || null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/* --- Pedidos -----------------------------------------------------------
+   Lo único del panel que no vive en MongoDB: los pedidos vienen de la API de
+   Siesa y se guardan en SQL Server. La conexión es perezosa, así que si SQL
+   está caído el resto del panel sigue funcionando.                        */
+
+// GET /api/pedidos?todos=1&sinDespachar=1
+app.get('/api/pedidos', async (req, res) => {
+    try {
+        res.json(await pedidos.listar({
+            soloPendientes: req.query.todos !== '1',
+            incluirDespachados: req.query.sinDespachar !== '1'
+        }));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/pedidos/sincronizar - trae de Siesa y refleja en SQL
+app.post('/api/pedidos/sincronizar', async (req, res) => {
+    try {
+        res.json({ ok: true, ...(await pedidos.sincronizar()) });
+    } catch (err) {
+        res.status(502).json({ error: err.message });
+    }
+});
+
+// POST /api/pedidos/actualizar  { idTipoDocto, consecDocto, despachado, noGuia }
+// Solo toca las dos columnas del asesor; lo que viene de Siesa no se edita.
+app.post('/api/pedidos/actualizar', async (req, res) => {
+    try {
+        const { idTipoDocto, consecDocto, despachado, noGuia } = req.body || {};
+        if (!idTipoDocto || !Number.isFinite(Number(consecDocto))) {
+            return res.status(400).json({ error: 'falta idTipoDocto o consecDocto' });
+        }
+        if (despachado === undefined && noGuia === undefined) {
+            return res.status(400).json({ error: 'no hay nada que actualizar' });
+        }
+        if (noGuia !== undefined && noGuia !== null && String(noGuia).length > 100) {
+            return res.status(400).json({ error: 'el numero de guia supera 100 caracteres' });
+        }
+
+        const cambio = {};
+        if (despachado !== undefined) cambio.despachado = !!despachado;
+        if (noGuia !== undefined) cambio.noGuia = noGuia;
+
+        const ok = await pedidos.actualizar(String(idTipoDocto), Number(consecDocto), cambio);
+        if (!ok) return res.status(404).json({ error: 'pedido no encontrado' });
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/search?collection=wa_chats&q=hola
 app.get('/api/search', async (req, res) => {
     try {
-        const col = req.query.collection || 'wa_chats';
+        const col = chatCollection(req.query.collection);
         const q = req.query.q || '';
         if (!q.trim()) return res.json([]);
 
@@ -244,10 +539,9 @@ app.get('/api/search', async (req, res) => {
 // GET /api/stats
 app.get('/api/stats', async (req, res) => {
     try {
-        const collections = ['wa_chats', 'wa_chats_web'];
         const stats = {};
 
-        for (const col of collections) {
+        for (const col of CHAT_COLLECTIONS) {
             const docs = await db.collection(col).find({}).toArray();
             const totalMsgs = docs.reduce((sum, d) => sum + filterMessages(d.messages).length, 0);
             stats[col] = { sessions: docs.length, messages: totalMsgs };

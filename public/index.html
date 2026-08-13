@@ -121,25 +121,17 @@
             gap: 6px;
             z-index: 20;
         }
+        /* Logo en azul KOS plano, sin degradado ni brillo. */
         .brand-mark {
             width: 44px; height: 44px;
             border-radius: 14px;
-            background: var(--grad-brand);
+            background: var(--kos-blue);
             display: grid; place-items: center;
             color: #fff;
             font-weight: 700; font-size: 15px; letter-spacing: -.5px;
-            box-shadow: 0 6px 18px rgba(0,159,227,.35);
             margin-bottom: 18px;
-            position: relative;
             flex-shrink: 0;
         }
-        .brand-mark::after {
-            content: '';
-            position: absolute; inset: 0;
-            border-radius: inherit;
-            background: linear-gradient(160deg, rgba(255,255,255,.35), transparent 55%);
-        }
-        .brand-mark span { position: relative; z-index: 1; }
 
         .rail-btn {
             width: 46px; height: 46px;
@@ -625,77 +617,70 @@
         }
         .chat-area.has-chat .chat-scroll { display: block; }
 
-        /* --- La linea de tiempo -------------------------------------- */
+        /* Volver a lo mas reciente. Solo aparece si te alejaste del final. */
+        .jump-btn {
+            position: absolute;
+            right: 26px; bottom: 24px;
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--kos-blue-deep);
+            display: grid; place-items: center;
+            cursor: pointer;
+            box-shadow: var(--shadow-md);
+            z-index: 5;
+            opacity: 0;
+            transform: translateY(10px) scale(.92);
+            pointer-events: none;
+            transition: opacity .22s, transform .22s cubic-bezier(.16,1,.3,1),
+                        background .18s, color .18s;
+        }
+        .jump-btn.show { opacity: 1; transform: none; pointer-events: auto; }
+        .jump-btn:hover { background: var(--kos-blue); color: #fff; border-color: var(--kos-blue); }
+        .jump-btn svg { width: 20px; height: 20px; }
+        .chat-area:not(.has-chat) .jump-btn { display: none; }
+
+        /* --- Conversacion a dos lados: cliente izquierda, bot derecha --- */
         .thread {
             position: relative;
-            padding: 26px 40px 56px 0;
+            padding: 26px 40px 56px;
             min-height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
-        .thread.has-msgs::before {
-            content: '';
-            position: absolute;
-            left: 55px; top: 0; bottom: 0;
-            width: 1px;
-            background: linear-gradient(to bottom,
-                transparent 0%,
-                var(--line-strong) 5%,
-                var(--line-strong) 94%,
-                transparent 100%);
-        }
+        .thread > .loading { margin: auto; }
 
         .msg {
-            position: relative;
-            padding-left: 84px;
-            margin-bottom: 14px;
+            display: flex;
+            flex-direction: column;
+            max-width: min(76%, 760px);
             animation: rise .42s cubic-bezier(.16,1,.3,1) both;
         }
         @keyframes rise {
             from { opacity: 0; transform: translateY(12px); }
             to   { opacity: 1; transform: translateY(0); }
         }
-        /* Nodo sobre la linea */
-        .msg::before {
-            content: '';
-            position: absolute;
-            left: 49px; top: 15px;
-            width: 13px; height: 13px;
-            border-radius: 50%;
-            background: var(--canvas);
-            border: 2.5px solid var(--kos-orange);
-            box-shadow: 0 0 0 4px var(--canvas);
-            z-index: 2;
-        }
-        .msg.ai::before {
-            border-color: var(--kos-blue);
-            background: var(--kos-blue);
-        }
-        /* Conector del nodo a la tarjeta */
-        .msg::after {
-            content: '';
-            position: absolute;
-            left: 62px; top: 21px;
-            width: 22px; height: 1px;
-            background: var(--line-strong);
-        }
-        .msg.ai { padding-left: 132px; }
-        .msg.ai::after { width: 70px; }
+        .msg.human { align-self: flex-start; align-items: flex-start; }
+        .msg.ai    { align-self: flex-end;   align-items: flex-end; }
 
         .msg-who {
             font-family: var(--mono);
-            font-size: 10px; font-weight: 600;
+            font-size: 9.5px; font-weight: 600;
             letter-spacing: .1em; text-transform: uppercase;
             color: var(--kos-orange-deep);
-            margin-bottom: 6px;
+            margin: 0 5px 5px;
         }
         .msg.ai .msg-who { color: var(--kos-blue-deep); }
 
         .msg-card {
             position: relative;
-            max-width: 720px;
             background: var(--surface);
             border: 1px solid var(--line);
+            /* Esquina superior "pegada" del lado de quien habla. */
             border-radius: 4px var(--r-lg) var(--r-lg) var(--r-lg);
-            padding: 13px 17px;
+            padding: 12px 16px;
             box-shadow: var(--shadow-sm);
             font-size: 14.5px;
             line-height: 1.62;
@@ -707,15 +692,7 @@
         .msg.ai .msg-card {
             background: var(--bot-bg);
             border-color: var(--bot-line);
-            max-width: 780px;
-        }
-        /* Filo de marca en la respuesta del bot */
-        .msg.ai .msg-card::before {
-            content: '';
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 3px;
-            background: var(--grad-blue);
+            border-radius: var(--r-lg) 4px var(--r-lg) var(--r-lg);
         }
 
         .msg-card strong { font-weight: 600; }
@@ -770,11 +747,10 @@
         .media-dl:hover { background: var(--kos-blue); color: #fff; border-color: var(--kos-blue); }
         .media-missing { color: var(--ink-muted); font-style: italic; }
 
-        /* Separador de fecha, montado sobre la linea */
+        /* Separador de fecha, centrado entre los dos lados */
         .date-sep {
-            position: relative;
-            padding-left: 84px;
-            margin: 22px 0 18px;
+            align-self: center;
+            margin: 10px 0 6px;
         }
         .date-sep span {
             display: inline-block;
@@ -787,17 +763,6 @@
             border-radius: 99px;
             padding: 5px 14px;
             box-shadow: var(--shadow-sm);
-        }
-        .date-sep::before {
-            content: '';
-            position: absolute;
-            left: 50px; top: 50%;
-            transform: translateY(-50%);
-            width: 11px; height: 11px;
-            border-radius: 3px;
-            background: var(--grad-brand);
-            box-shadow: 0 0 0 4px var(--canvas);
-            z-index: 2;
         }
 
         /* --- Estado vacio --------------------------------------------- */
@@ -815,11 +780,10 @@
         .empty-mark {
             width: 88px; height: 88px;
             border-radius: 26px;
-            background: var(--grad-brand);
+            background: var(--kos-blue);
             display: grid; place-items: center;
             color: #fff;
             font-size: 26px; font-weight: 700; letter-spacing: -1px;
-            box-shadow: 0 18px 44px rgba(0,159,227,.28);
             margin-bottom: 24px;
             animation: float 5s ease-in-out infinite;
         }
@@ -891,15 +855,8 @@
            ================================================================ */
         @media (max-width: 900px) {
             .sidebar { width: 300px; }
-            .msg { padding-left: 66px; }
-            .msg.ai { padding-left: 96px; }
-            .thread.has-msgs::before { left: 40px; }
-            .msg::before { left: 34px; }
-            .msg::after { left: 47px; width: 19px; }
-            .msg.ai::after { width: 49px; }
-            .date-sep { padding-left: 66px; }
-            .date-sep::before { left: 35px; }
-            .thread { padding-right: 24px; }
+            .thread { padding: 22px 24px 52px; }
+            .msg { max-width: 84%; }
         }
         @media (max-width: 720px) {
             .rail { width: 60px; }
@@ -908,17 +865,11 @@
             body.viewing-chat .sidebar { display: none; }
             body.viewing-chat .chat-area { display: flex; }
             .back-btn { display: grid; }
-            .thread { padding: 18px 16px 44px 0; }
-            .msg { padding-left: 52px; }
-            .msg.ai { padding-left: 68px; }
-            .thread.has-msgs::before { left: 26px; }
-            .msg::before { left: 20px; }
-            .msg::after { left: 33px; width: 19px; }
-            .msg.ai::after { width: 35px; }
-            .date-sep { padding-left: 52px; }
-            .date-sep::before { left: 21px; }
+            .thread { padding: 18px 14px 44px; gap: 10px; }
+            .msg { max-width: 90%; }
             .chat-header { padding: 11px 14px; }
             .msg-card { font-size: 14px; }
+            .jump-btn { right: 16px; bottom: 16px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -927,6 +878,338 @@
                 animation-iteration-count: 1 !important;
                 transition-duration: .01ms !important;
             }
+        }
+        /* ================================================================
+           ARCHIVADOS Y AGENDA
+           ================================================================ */
+        .rail-sep {
+            width: 26px; height: 1px;
+            background: var(--shell-line);
+            margin: 9px 0 3px;
+            flex-shrink: 0;
+        }
+        .rail-btn[data-view="archived"].active { background: rgba(125,156,184,.22); }
+        .rail-btn[data-view="contacts"].active { background: rgba(0,159,227,.18); }
+
+        /* La accion de restaurar tiene que verse siempre: las filas archivadas
+           suelen tener mensajes sin leer, y .unread esconde .row-action. */
+        .session-item .row-action.always { display: grid !important; }
+
+        .row-chip {
+            display: inline-block;
+            font-size: 9.5px; font-weight: 700;
+            letter-spacing: .5px; text-transform: uppercase;
+            padding: 2px 7px; border-radius: 99px;
+            border: 1px solid currentColor;
+            opacity: .9;
+        }
+        .row-chip.wa { color: var(--kos-blue-soft); }
+        .row-chip.web { color: var(--kos-orange); }
+        .row-chip.none { color: var(--shell-muted); }
+
+        /* Selector de canal de la agenda. A diferencia de "Solo pendientes",
+           la opcion activa toma el color de su canal, no el naranja de
+           pendiente: aqui no se esta marcando algo por hacer. */
+        .chip.seg::before { display: none; }
+        .chip.seg.on {
+            color: #fff;
+            background: rgba(255,255,255,.13);
+            border-color: rgba(255,255,255,.26);
+        }
+        .chip.seg.on[data-ch="whatsapp"] {
+            background: rgba(0,159,227,.22);
+            border-color: rgba(0,159,227,.55);
+        }
+        .chip.seg.on[data-ch="web"] {
+            background: rgba(242,140,48,.2);
+            border-color: rgba(242,140,48,.5);
+        }
+        .chip-n {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            opacity: .65;
+        }
+
+        .contact-panel {
+            position: relative;
+            z-index: 2;
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            padding: 36px 32px 48px;
+        }
+        .chat-area.has-contact .contact-panel { display: block; }
+        .chat-area.has-contact .empty-state { display: none; }
+
+        .contact-hero {
+            display: flex; align-items: center; gap: 18px;
+            margin-bottom: 24px;
+        }
+        .contact-hero .session-avatar {
+            width: 62px; height: 62px;
+            border-radius: 20px; font-size: 21px;
+        }
+        .contact-hero h2 {
+            font-size: 23px; font-weight: 600;
+            letter-spacing: -.4px; color: var(--ink);
+        }
+        .contact-hero .sub {
+            font-size: 13px; color: var(--ink-muted);
+            margin-top: 4px;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+
+        .contact-card {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 4px 20px;
+            margin-bottom: 18px;
+            max-width: 660px;
+        }
+        .contact-field {
+            display: flex; align-items: flex-start; gap: 16px;
+            padding: 13px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .contact-field:last-child { border-bottom: 0; }
+        .contact-field .k {
+            width: 138px; flex-shrink: 0;
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .5px;
+            color: var(--ink-muted);
+            padding-top: 3px;
+        }
+        .contact-field .v {
+            flex: 1; min-width: 0;
+            font-size: 14px; color: var(--ink);
+            word-break: break-word;
+        }
+        .contact-field .v.mono { font-family: var(--mono); font-size: 12.5px; }
+        .contact-field .v a { color: var(--kos-blue-deep); text-decoration: none; }
+        .contact-field .v a:hover { text-decoration: underline; }
+        .contact-field .v.empty { color: var(--ink-muted); font-style: italic; }
+
+        .contact-actions {
+            display: flex; flex-wrap: wrap; gap: 10px;
+            max-width: 660px;
+        }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 18px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line-strong);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: var(--font); font-size: 13px; font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform .18s, border-color .18s, color .18s, filter .18s;
+        }
+        .btn:hover { transform: translateY(-1px); border-color: var(--kos-blue); color: var(--kos-blue-deep); }
+        .btn.primary { background: var(--grad-blue); border-color: transparent; color: #fff; }
+        .btn.primary:hover { color: #fff; filter: brightness(1.07); }
+        .btn svg { width: 16px; height: 16px; }
+
+        /* ================================================================
+           INTERVENCION DEL ASESOR
+           ================================================================ */
+        .row-chip.manual { color: var(--kos-orange); }
+
+        .mode-switch {
+            display: inline-flex;
+            flex-shrink: 0;
+            gap: 2px;
+            padding: 3px;
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: 99px;
+        }
+        .mode-switch button {
+            border: 0;
+            background: transparent;
+            font-family: var(--font);
+            font-size: 12px; font-weight: 600;
+            color: var(--ink-muted);
+            padding: 5px 13px;
+            border-radius: 99px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background .18s, color .18s;
+        }
+        .mode-switch button:hover:not(.on) { color: var(--ink); }
+        .mode-switch button.on { background: var(--kos-blue); color: #fff; }
+        .mode-switch button.on[data-mode="manual"] { background: var(--kos-orange-deep); }
+
+        /* Lo que escribio el asesor, no el bot */
+        .msg.ai.asesor .msg-card { box-shadow: inset 3px 0 0 var(--kos-orange); }
+        .msg.ai.asesor .msg-who { color: var(--kos-orange-deep); }
+
+        .composer-hint {
+            display: none;
+            position: relative; z-index: 2;
+            padding: 10px 26px 0;
+            font-size: 12px;
+            color: var(--ink-muted);
+        }
+        .composer {
+            display: none;
+            position: relative; z-index: 2;
+            gap: 10px;
+            align-items: flex-end;
+            padding: 10px 26px 14px;
+            background: color-mix(in srgb, var(--surface) 80%, transparent);
+            backdrop-filter: blur(16px) saturate(1.4);
+            -webkit-backdrop-filter: blur(16px) saturate(1.4);
+            border-top: 1px solid var(--line);
+        }
+        .chat-area.has-chat.manual .composer,
+        .chat-area.has-chat.manual .composer-hint { display: flex; }
+        .chat-area.has-chat.manual .composer-hint { display: block; }
+
+        .composer textarea {
+            flex: 1;
+            resize: none;
+            min-height: 44px; max-height: 150px;
+            padding: 12px 14px;
+            border-radius: var(--r-md);
+            border: 1px solid var(--line-strong);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: var(--font);
+            font-size: 14px; line-height: 1.45;
+        }
+        .composer textarea:focus { outline: none; border-color: var(--kos-blue); }
+        .composer .send {
+            width: 44px; height: 44px;
+            flex-shrink: 0;
+            border: 0; border-radius: 50%;
+            background: var(--grad-blue);
+            color: #fff;
+            display: grid; place-items: center;
+            cursor: pointer;
+            transition: filter .18s, transform .18s, opacity .18s;
+        }
+        .composer .send:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+        .composer .send:disabled { opacity: .45; cursor: default; transform: none; }
+        .composer .send svg { width: 18px; height: 18px; }
+
+        /* ================================================================
+           PEDIDOS
+           Tabla ancha: en esta vista el sidebar estorba y se oculta.
+           ================================================================ */
+        body.view-pedidos .sidebar { display: none; }
+
+        .pedidos-panel {
+            display: none;
+            position: relative; z-index: 2;
+            flex: 1;
+            overflow: auto;
+            padding: 28px 30px 40px;
+        }
+        .chat-area.has-pedidos .pedidos-panel { display: block; }
+        .chat-area.has-pedidos .empty-state { display: none; }
+
+        .ped-head {
+            display: flex; align-items: center; gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .ped-head h2 {
+            font-size: 23px; font-weight: 600;
+            letter-spacing: -.4px; color: var(--ink);
+        }
+        .ped-head .sub { font-size: 13px; color: var(--ink-muted); margin-top: 3px; }
+        .ped-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .ped-wrap {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--r-lg);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+        .ped-scroll { overflow-x: auto; }
+        table.ped {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+            min-width: 880px;
+        }
+        table.ped th {
+            text-align: left;
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .5px;
+            color: var(--ink-muted);
+            padding: 12px 14px;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--line);
+            white-space: nowrap;
+            position: sticky; top: 0; z-index: 1;
+        }
+        table.ped td {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--line);
+            color: var(--ink);
+            vertical-align: middle;
+        }
+        table.ped tr:last-child td { border-bottom: 0; }
+        table.ped tbody tr:hover { background: var(--surface-2); }
+        table.ped tr.despachado td { color: var(--ink-muted); }
+        table.ped tr.despachado .ped-cliente { text-decoration: line-through; }
+        .ped-doc { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+        .ped-cliente { font-weight: 500; }
+        .ped-fecha { white-space: nowrap; color: var(--ink-soft); }
+        .ped-fecha.vencida { color: var(--kos-orange-deep); font-weight: 600; }
+
+        .ped-guia {
+            width: 140px;
+            padding: 7px 10px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--line-strong);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: var(--mono); font-size: 12.5px;
+        }
+        .ped-guia:focus { outline: none; border-color: var(--kos-blue); }
+        .ped-guia.guardado { border-color: var(--kos-blue); }
+
+        /* Interruptor de despacho */
+        .ped-check {
+            display: inline-flex; align-items: center; gap: 9px;
+            cursor: pointer; user-select: none;
+            font-size: 12.5px; font-weight: 600;
+            color: var(--ink-muted);
+            white-space: nowrap;
+        }
+        .ped-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .ped-check .caja {
+            width: 20px; height: 20px;
+            border-radius: 6px;
+            border: 1.8px solid var(--line-strong);
+            background: var(--surface);
+            display: grid; place-items: center;
+            flex-shrink: 0;
+            transition: background .18s, border-color .18s;
+        }
+        .ped-check .caja svg { width: 12px; height: 12px; opacity: 0; color: #fff; }
+        .ped-check input:checked + .caja {
+            background: var(--kos-blue);
+            border-color: var(--kos-blue);
+        }
+        .ped-check input:checked + .caja svg { opacity: 1; }
+        .ped-check input:focus-visible + .caja { box-shadow: 0 0 0 3px rgba(0,159,227,.28); }
+        .ped-check input:checked ~ .txt { color: var(--kos-blue-deep); }
+        .ped-check input:disabled + .caja { opacity: .5; }
+
+        .ped-vacio { padding: 40px 20px; text-align: center; color: var(--ink-muted); font-size: 14px; }
+
+        .contact-note {
+            margin-top: 22px;
+            font-size: 12.5px; line-height: 1.6;
+            color: var(--ink-muted);
+            max-width: 660px;
         }
     </style>
 </head>
@@ -953,6 +1236,34 @@
         </svg>
         <i class="dot"></i>
         <span class="rail-tip">Chat Web</span>
+    </button>
+
+    <div class="rail-sep"></div>
+
+    <button class="rail-btn" data-view="archived" onclick="switchView(this)" aria-label="Archivados">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2.5" y="3.5" width="19" height="5" rx="1.6"/>
+            <path d="M4.5 8.5v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-10"/>
+            <path d="M9.8 12.5h4.4"/>
+        </svg>
+        <span class="rail-tip">Archivados</span>
+    </button>
+
+    <button class="rail-btn" data-view="pedidos" onclick="switchView(this)" aria-label="Pedidos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 7.2 12 3l8.5 4.2v9.6L12 21l-8.5-4.2z"/>
+            <path d="M3.5 7.2 12 11.5l8.5-4.3M12 11.5V21"/>
+        </svg>
+        <span class="rail-tip">Pedidos</span>
+    </button>
+
+    <button class="rail-btn" data-view="contacts" onclick="switchView(this)" aria-label="Contactos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16.5 20.5v-1.7a3.4 3.4 0 0 0-3.4-3.4H7.9a3.4 3.4 0 0 0-3.4 3.4v1.7"/>
+            <circle cx="10.5" cy="8" r="3.5"/>
+            <path d="M19.5 20.5v-1.7a3.4 3.4 0 0 0-2.6-3.3M15.6 4.7a3.5 3.5 0 0 1 0 6.6"/>
+        </svg>
+        <span class="rail-tip">Contactos</span>
     </button>
 
     <div class="rail-spacer"></div>
@@ -993,9 +1304,21 @@
         </div>
     </div>
 
-    <div class="filter-bar">
+    <div class="filter-bar" id="filterBar">
         <button class="chip" id="filterChip" onclick="togglePendingFilter()">Solo pendientes</button>
         <button class="chip" id="readAllChip" onclick="markAllRead()">Marcar todas leídas</button>
+    </div>
+
+    <!-- Filtro de canal, solo visible en la agenda -->
+    <div class="filter-bar" id="contactFilterBar" style="display:none">
+        <button class="chip seg on" data-ch="all" onclick="setContactChannel(this)">
+            Todos <span class="chip-n" id="chn-all"></span></button>
+        <button class="chip seg" data-ch="whatsapp" onclick="setContactChannel(this)">
+            WhatsApp <span class="chip-n" id="chn-whatsapp"></span></button>
+        <button class="chip seg" data-ch="web" onclick="setContactChannel(this)">
+            Web <span class="chip-n" id="chn-web"></span></button>
+        <button class="chip seg" data-ch="none" onclick="setContactChannel(this)" style="display:none">
+            Sin canal <span class="chip-n" id="chn-none"></span></button>
     </div>
 
     <div class="sessions-list scroll scroll-dark" id="sessionsList"></div>
@@ -1037,6 +1360,24 @@
             <div class="chat-header-name" id="chatName">—</div>
             <div class="chat-header-info" id="chatInfo"></div>
         </div>
+        <div class="mode-switch" id="modeSwitch">
+            <button data-mode="auto" onclick="setMode('auto')">Automático</button>
+            <button data-mode="manual" onclick="setMode('manual')">Manual</button>
+        </div>
+        <a class="icon-btn" id="waWebBtn" href="#" target="_blank" rel="noopener"
+           title="Escribir al cliente en WhatsApp Web" aria-label="Escribir al cliente en WhatsApp Web">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 20.5l1.5-4.9A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/>
+                <path d="M8.6 8.3c.2-.5.4-.5.7-.5h.5c.2 0 .4 0 .6.5l.7 1.6c.1.3 0 .5-.1.7l-.4.5c-.2.2-.3.3-.1.6a7 7 0 0 0 3 2.6c.3.1.5.1.7-.1l.6-.7c.2-.2.4-.2.6-.1l1.6.8c.3.1.4.3.4.5a1.9 1.9 0 0 1-1.3 1.6c-.6.2-1.4.2-3.4-.7a10 10 0 0 1-4.3-4.2c-.6-1.1-.7-2-.6-2.6a2 2 0 0 1 .8-1.1z" fill="currentColor" stroke="none"/>
+            </svg>
+        </a>
+        <button class="icon-btn" id="archiveBtn" onclick="toggleArchiveCurrent()" title="Archivar conversación" aria-label="Archivar conversación">
+            <svg id="archiveIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2.5" y="3.5" width="19" height="5" rx="1.6"/>
+                <path d="M4.5 8.5v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-10"/>
+                <path d="M9.8 12.5h4.4"/>
+            </svg>
+        </button>
         <button class="icon-btn" onclick="markUnreadCurrent()" title="Marcar como no leído" aria-label="Marcar como no leído">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2.5 12S6 5.5 12 5.5c1.6 0 3 .5 4.2 1.2M21.5 12s-1.2 2.2-3.3 4"/>
@@ -1049,6 +1390,28 @@
     <div class="chat-scroll scroll" id="chatScroll">
         <div class="thread" id="thread"></div>
     </div>
+
+    <div class="composer-hint" id="composerHint"></div>
+    <div class="composer">
+        <textarea id="composerText" rows="1" placeholder="Escribe tu mensaje al cliente…"
+                  oninput="autoGrow(this)" onkeydown="composerKey(event)"></textarea>
+        <button class="send" id="sendBtn" onclick="sendMessage()" title="Enviar (Enter)" aria-label="Enviar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4.5 12l15.5-7.5-6 15.5-2.6-6.4z"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="contact-panel scroll" id="contactPanel"></div>
+
+    <div class="pedidos-panel scroll" id="pedidosPanel"></div>
+
+    <button class="jump-btn" id="jumpBtn" onclick="scrollToLatest()"
+            title="Ir a lo más reciente" aria-label="Ir a lo más reciente">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4.5v15M5.5 13l6.5 6.5 6.5-6.5"/>
+        </svg>
+    </button>
 </main>
 
 <div class="toast" id="toast"><i></i><span id="toastText"></span></div>
@@ -1056,6 +1419,13 @@
 <script>
 let currentCollection = 'wa_chats';
 let currentSession = null;
+// La coleccion de la conversacion abierta. En "Archivados" se mezclan los dos
+// canales, asi que no siempre coincide con currentCollection.
+let currentSessionCol = 'wa_chats';
+// 'inbox' (un canal), 'archived' (los dos canales) o 'contacts' (la agenda).
+let currentView = 'inbox';
+let contactsList = null;
+let currentContact = null;
 let searchTimeout = null;
 // id -> sesion, para que los resultados de busqueda puedan mostrar el nombre
 // del contacto (/api/search solo devuelve sessionId).
@@ -1092,8 +1462,22 @@ function findSession(id) {
     return null;
 }
 
+// Lo archivado no cuenta como pendiente: ya se cerro con el cliente.
 function channelUnread(col) {
-    return (sessionsByCol[col] || []).filter(s => unreadCount(s) > 0).length;
+    return (sessionsByCol[col] || []).filter(s => !s.archived && unreadCount(s) > 0).length;
+}
+
+// Bandeja del canal visible, sin lo archivado.
+function inboxOf(col) {
+    return (sessionsByCol[col] || []).filter(s => !s.archived);
+}
+
+// La carpeta de archivados es una sola para los dos canales, ordenada por
+// cuando se archivo cada conversacion.
+function archivedAll() {
+    return Object.keys(sessionsByCol)
+        .flatMap(col => (sessionsByCol[col] || []).filter(s => s.archived))
+        .sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0));
 }
 
 function markRead(s) {
@@ -1133,7 +1517,7 @@ function markUnreadCurrent() {
 }
 
 function markAllRead() {
-    const all = sessionsByCol[currentCollection] || [];
+    const all = inboxOf(currentCollection);
     let n = 0;
     all.forEach(s => { if (unreadCount(s) > 0) { markRead(s); n++; } });
     if (!n) return;
@@ -1168,7 +1552,17 @@ function refreshRow(id) {
 function updateCounters() {
     const pend = channelUnread(currentCollection);
     const label = document.getElementById('pendingLabel');
-    if (label) label.textContent = pend ? pend + (pend === 1 ? ' pendiente' : ' pendientes') : '';
+    if (label) {
+        if (currentView === 'contacts') {
+            const n = (contactsList || []).length;
+            label.textContent = n ? n + (n === 1 ? ' contacto' : ' contactos') : '';
+        } else if (currentView === 'archived') {
+            const n = archivedAll().length;
+            label.textContent = n ? n + (n === 1 ? ' archivada' : ' archivadas') : '';
+        } else {
+            label.textContent = pend ? pend + (pend === 1 ? ' pendiente' : ' pendientes') : '';
+        }
+    }
     toggleActivity('wa_chats', channelUnread('wa_chats') > 0);
     toggleActivity('wa_chats_web', channelUnread('wa_chats_web') > 0);
     const readAll = document.getElementById('readAllChip');
@@ -1331,9 +1725,12 @@ function sessionCard(s, isWeb, index, opts = {}) {
            </button>`;
     const stamp = opts.hideDate ? '' :
         `<div class="session-date" title="${escapeAttr(formatFullDate(s.lastSeen || s.startedAt))}">${formatDate(s.lastSeen || s.startedAt)}</div>`;
+    // El chip de Manual avisa desde la lista que el bot está en pausa ahí, sin
+    // tener que abrir la conversación para darse cuenta.
+    const manual = s.mode === 'manual' ? '<span class="row-chip manual">Manual</span> ' : '';
     const preview = opts.preview !== undefined
         ? opts.preview
-        : `${s.lastType === 'ai' ? '<b>Bot:</b> ' : ''}${escapeHtml(truncate(s.lastMessage, 42))}`;
+        : `${manual}${s.lastType === 'ai' ? '<b>Bot:</b> ' : ''}${escapeHtml(truncate(s.lastMessage, 42))}`;
 
     return `
     <div class="session-item ${unread ? 'unread' : ''}" data-id="${s.id}" style="animation-delay:${delay}ms" onclick="openSession('${s.id}')">
@@ -1365,7 +1762,7 @@ async function loadSessions() {
             throw new Error((wa && wa.error) || (web && web.error) || 'respuesta inesperada del servidor');
         }
         sessionsByCol = { wa_chats: wa, wa_chats_web: web };
-        renderSessions();
+        renderCurrentView();
     } catch (err) {
         list.innerHTML = '<div class="loading"><p>Error: ' + escapeHtml(err.message) + '</p></div>';
     }
@@ -1373,10 +1770,13 @@ async function loadSessions() {
 
 function renderSessions(opts = {}) {
     const list = document.getElementById('sessionsList');
-    const all = sessionsByCol[currentCollection] || [];
+    const all = inboxOf(currentCollection);
 
+    // El cache alimenta los resultados de busqueda, que tambien pueden caer
+    // sobre conversaciones archivadas: se indexan todas, no solo la bandeja.
     sessionsCache = {};
-    all.forEach(s => { sessionsCache[s.id] = s; });
+    Object.keys(sessionsByCol).forEach(col =>
+        (sessionsByCol[col] || []).forEach(s => { sessionsCache[s.id] = s; }));
     updateCounters();
     // quiet = viene del refresco automatico, no de una accion del usuario.
     list.classList.toggle('no-anim', !!opts.quiet);
@@ -1402,24 +1802,673 @@ function renderSessions(opts = {}) {
     }
 }
 
-async function openSession(docId) {
+/* ======================================================================
+   ARCHIVADOS
+   Archivar no mueve ni borra el chat: escribe `archivedAt` en el documento.
+   Tiene que ser asi porque el nodo de memoria de n8n sigue escribiendo
+   mensajes en ese mismo documento; moverlo le borraria al bot el historial
+   del cliente. Si el cliente vuelve a escribir, el servidor lo devuelve solo
+   a la bandeja, porque entonces la conversacion no habia terminado.
+   ====================================================================== */
+const ICON_ARCHIVE = '<rect x="2.5" y="3.5" width="19" height="5" rx="1.6"/>' +
+    '<path d="M4.5 8.5v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-10"/><path d="M9.8 12.5h4.4"/>';
+const ICON_RESTORE = '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 3.5V9H9"/>';
+
+function renderArchived(opts = {}) {
+    const list = document.getElementById('sessionsList');
+    const all = archivedAll();
+
+    sessionsCache = {};
+    Object.keys(sessionsByCol).forEach(col =>
+        (sessionsByCol[col] || []).forEach(s => { sessionsCache[s.id] = s; }));
+    updateCounters();
+    list.classList.toggle('no-anim', !!opts.quiet);
+
+    if (!all.length) {
+        list.innerHTML = '<div class="loading"><p>Todavía no has archivado ninguna conversación.<br>' +
+            'Abre un chat y usa el botón de archivar.</p></div>';
+        return;
+    }
+
+    const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+    const shown = !q ? all : all.filter(s =>
+        [s.name, s.sessionId, s.lastMessage].some(v => v && String(v).toLowerCase().includes(q)));
+
+    if (!shown.length) {
+        list.innerHTML = '<div class="loading"><p>Nada archivado coincide con “' + escapeHtml(q) + '”</p></div>';
+        return;
+    }
+
+    list.innerHTML = shown.map((s, i) => {
+        const isWeb = s.collection === 'wa_chats_web';
+        return sessionCard(s, isWeb, i, {
+            badge: `<span class="row-chip ${isWeb ? 'web' : 'wa'}">${isWeb ? 'Web' : 'WA'}</span>
+                <button class="row-action always" onclick="event.stopPropagation();toggleArchive('${s.id}', false)"
+                        title="Devolver a la bandeja" aria-label="Devolver a la bandeja">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">${ICON_RESTORE}</svg>
+                </button>`
+        });
+    }).join('');
+
+    if (currentSession) {
+        const row = list.querySelector(`.session-item[data-id="${currentSession}"]`);
+        if (row) row.classList.add('active');
+    }
+}
+
+async function toggleArchive(id, archivar) {
+    const s = findSession(id);
+    const col = (s && s.collection) || currentSessionCol;
+    try {
+        const res = await fetch('/api/archive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection: col, id, archived: archivar })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'el servidor respondió ' + res.status);
+
+        if (s) {
+            s.archived = archivar;
+            s.archivedAt = archivar ? new Date().toISOString() : null;
+            s.reopened = false;
+        }
+        // La conversacion abierta desaparece de la vista actual: se cierra.
+        if (currentSession === id &&
+            ((currentView === 'inbox' && archivar) || (currentView === 'archived' && !archivar))) {
+            currentSession = null;
+            closeDetail();
+        } else if (currentSession === id) {
+            updateArchiveBtn(archivar);
+        }
+        // El chat cambio de estado: la agenda tendra que releerse.
+        contactsList = null;
+        renderCurrentView();
+        showToast(archivar ? 'Conversación archivada' : 'Devuelta a la bandeja');
+    } catch (err) {
+        showToast('No se pudo archivar: ' + err.message);
+    }
+}
+
+function toggleArchiveCurrent() {
+    if (!currentSession) return;
+    const s = findSession(currentSession);
+    toggleArchive(currentSession, !(s && s.archived));
+}
+
+function updateArchiveBtn(archivada) {
+    const btn = document.getElementById('archiveBtn');
+    const icon = document.getElementById('archiveIcon');
+    if (!btn || !icon) return;
+    btn.title = archivada ? 'Devolver a la bandeja' : 'Archivar conversación';
+    btn.setAttribute('aria-label', btn.title);
+    icon.innerHTML = archivada ? ICON_RESTORE : ICON_ARCHIVE;
+}
+
+/* ======================================================================
+   INTERVENCION DEL ASESOR
+   En Manual, el nodo "¿Modo Manual?" del workflow corta el paso al bot: el
+   cliente deja de recibir respuestas automaticas y sus mensajes se siguen
+   guardando en la memoria, para que al volver a Automatico el bot tenga el
+   hilo completo. Solo aplica a WhatsApp: el widget web es peticion/respuesta
+   y, si el bot no contesta, el visitante se queda esperando.
+   ====================================================================== */
+let currentMode = 'auto';
+let currentPhone = null;
+
+// WhatsApp Web solo sirve si conocemos un numero real. Las identidades nuevas
+// de Meta (CO.1586524026432871) no traen telefono: ahi no hay a quien escribir.
+function resolvePhone(data) {
+    const d = String(data.phoneNumber || data.sessionId || '').replace(/\D/g, '');
+    if (/^57\d{10}$/.test(d)) return d;
+    if (/^3\d{9}$/.test(d)) return '57' + d;
+    return null;
+}
+
+function paintMode() {
+    const isWeb = currentSessionCol === 'wa_chats_web';
+    document.getElementById('chatArea')
+        .classList.toggle('manual', currentMode === 'manual' && !isWeb);
+    document.getElementById('modeSwitch').querySelectorAll('button')
+        .forEach(b => b.classList.toggle('on', b.dataset.mode === currentMode));
+    document.getElementById('composerHint').textContent = currentMode === 'manual'
+        ? 'El bot está en pausa para este cliente. Lo que escribas aquí le llega por WhatsApp.'
+        : '';
+}
+
+function updateChatControls(data) {
+    const isWeb = currentSessionCol === 'wa_chats_web';
+    currentMode = data.mode === 'manual' ? 'manual' : 'auto';
+    currentPhone = resolvePhone(data);
+
+    // El chat web no admite ni modo manual ni escribirle: se ocultan.
+    document.getElementById('modeSwitch').style.display = isWeb ? 'none' : '';
+
+    const wa = document.getElementById('waWebBtn');
+    if (currentPhone && !isWeb) {
+        wa.style.display = '';
+        wa.href = 'https://web.whatsapp.com/send?phone=' + currentPhone;
+        wa.title = 'Escribir a +' + currentPhone + ' en WhatsApp Web';
+    } else {
+        wa.style.display = 'none';
+    }
+
+    paintMode();
+}
+
+async function setMode(mode) {
+    if (!currentSession || mode === currentMode) return;
+    try {
+        const r = await fetch('/api/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection: currentSessionCol, id: currentSession, mode })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        currentMode = mode;
+        const s = findSession(currentSession);
+        if (s) s.mode = mode;
+        paintMode();
+        renderCurrentView();
+        if (mode === 'manual') document.getElementById('composerText').focus();
+        showToast(mode === 'manual'
+            ? 'Bot en pausa: la conversación es tuya'
+            : 'El bot vuelve a responder');
+    } catch (err) {
+        showToast('No se pudo cambiar el modo: ' + err.message);
+    }
+}
+
+function autoGrow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+}
+
+function composerKey(e) {
+    // Enter envía, Shift+Enter salta de línea (como WhatsApp).
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+async function sendMessage() {
+    const box = document.getElementById('composerText');
+    const btn = document.getElementById('sendBtn');
+    const texto = box.value.trim();
+    if (!texto || !currentSession || btn.disabled) return;
+
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection: currentSessionCol, id: currentSession, text: texto })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        box.value = '';
+        autoGrow(box);
+        // Se recarga la conversación para ver el mensaje ya guardado, en vez de
+        // pintarlo a mano y arriesgarse a mostrar algo que no quedó en la base.
+        await openSession(currentSession, currentSessionCol);
+        box.focus();
+    } catch (err) {
+        showToast('No se envió: ' + err.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+/* ======================================================================
+   PEDIDOS
+   Vienen de la API de Siesa y viven en SQL Server, no en Mongo. El asesor
+   solo puede tocar dos columnas: el numero de guia y el despacho. La
+   sincronizacion nunca las pisa (ver el MERGE en pedidos.js).
+   ====================================================================== */
+let pedidosList = null;
+let pedidosVerTodos = false;
+
+function fechaCorta(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+// Un pedido sin despachar cuya fecha de entrega ya paso necesita atencion.
+function entregaVencida(p) {
+    if (p.despachado || !p.fechaEntrega) return false;
+    const d = new Date(p.fechaEntrega);
+    return !isNaN(d) && d < new Date(new Date().toDateString());
+}
+
+async function renderPedidos(opts = {}) {
+    const panel = document.getElementById('pedidosPanel');
+
+    if (!pedidosList) {
+        panel.innerHTML = '<div class="ped-vacio"><div class="spinner"></div><p>Cargando pedidos…</p></div>';
+        try {
+            const d = await fetchAPI('pedidos', pedidosVerTodos ? { todos: '1' } : {});
+            if (!Array.isArray(d)) throw new Error((d && d.error) || 'respuesta inesperada del servidor');
+            pedidosList = d;
+        } catch (err) {
+            panel.innerHTML = `<div class="ped-vacio"><p>No se pudieron cargar los pedidos.<br>
+                <b>${escapeHtml(err.message)}</b></p></div>`;
+            return;
+        }
+        if (currentView !== 'pedidos') return;   // cambiaron de vista mientras cargaba
+    }
+
+    const sinDespachar = pedidosList.filter(p => !p.despachado).length;
+    const ultima = pedidosList.reduce((a, p) =>
+        p.sincronizadoEn && (!a || new Date(p.sincronizadoEn) > new Date(a)) ? p.sincronizadoEn : a, null);
+
+    const filas = pedidosList.map(p => `
+        <tr class="${p.despachado ? 'despachado' : ''}" data-ped="${escapeAttr(p.id)}">
+            <td class="ped-doc">${escapeHtml(p.idTipoDocto)}-${p.consecDocto}</td>
+            <td class="ped-cliente">${escapeHtml(p.nombreCliente || '—')}</td>
+            <td class="ped-fecha">${escapeHtml(fechaCorta(p.fechaRegistro))}</td>
+            <td class="ped-fecha ${entregaVencida(p) ? 'vencida' : ''}">${escapeHtml(fechaCorta(p.fechaEntrega))}</td>
+            <td>
+                <input class="ped-guia" type="text" maxlength="100" placeholder="—"
+                       value="${escapeAttr(p.noGuia || '')}"
+                       onchange="guardarGuia('${escapeAttr(p.id)}', this)"
+                       onkeydown="if(event.key==='Enter')this.blur()">
+            </td>
+            <td>
+                <label class="ped-check">
+                    <input type="checkbox" ${p.despachado ? 'checked' : ''}
+                           onchange="marcarDespacho('${escapeAttr(p.id)}', this)">
+                    <span class="caja">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                    </span>
+                    <span class="txt">${p.despachado ? 'Despachado' : 'Pendiente'}</span>
+                </label>
+            </td>
+        </tr>`).join('');
+
+    panel.innerHTML = `
+        <div class="ped-head">
+            <div>
+                <h2>Pedidos</h2>
+                <div class="sub">
+                    ${pedidosList.length} ${pedidosList.length === 1 ? 'pedido' : 'pedidos'} ·
+                    ${sinDespachar} sin despachar
+                    ${ultima ? ' · última sincronización ' + escapeHtml(formatFullDate(ultima)) : ''}
+                </div>
+            </div>
+            <div class="ped-actions">
+                <button class="btn" onclick="alternarVerTodos()">
+                    ${pedidosVerTodos ? 'Ver solo pendientes' : 'Ver todos'}
+                </button>
+                <button class="btn primary" id="btnSyncPedidos" onclick="sincronizarPedidos()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5V9H15"/>
+                    </svg>
+                    Sincronizar con Siesa
+                </button>
+            </div>
+        </div>
+
+        <div class="ped-wrap">
+            ${!pedidosList.length ? '<div class="ped-vacio"><p>No hay pedidos.<br>Usa «Sincronizar con Siesa» para traerlos.</p></div>' : `
+            <div class="ped-scroll">
+                <table class="ped">
+                    <thead>
+                        <tr>
+                            <th>Documento</th><th>Cliente</th><th>Registro</th>
+                            <th>Entrega</th><th>No. guía</th><th>Despacho</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filas}</tbody>
+                </table>
+            </div>`}
+        </div>`;
+}
+
+function alternarVerTodos() {
+    pedidosVerTodos = !pedidosVerTodos;
+    pedidosList = null;
+    renderPedidos();
+}
+
+async function sincronizarPedidos() {
+    const btn = document.getElementById('btnSyncPedidos');
+    if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+    try {
+        const r = await fetch('/api/pedidos/sincronizar', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        pedidosList = null;
+        await renderPedidos();
+        showToast(`${d.recibidos} pedidos de Siesa · ${d.nuevos} nuevos` +
+                  (d.cerrados ? ` · ${d.cerrados} ya no pendientes` : ''));
+    } catch (err) {
+        showToast('No se pudo sincronizar: ' + err.message);
+        if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
+    }
+}
+
+function partirId(id) {
+    // El id es "TIPO-CONSEC" y el tipo puede traer guiones, así que se parte
+    // por el ÚLTIMO separador.
+    const i = id.lastIndexOf('-');
+    return { idTipoDocto: id.slice(0, i), consecDocto: Number(id.slice(i + 1)) };
+}
+
+async function actualizarPedido(id, cambio) {
+    const r = await fetch('/api/pedidos/actualizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...partirId(id), ...cambio })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+}
+
+async function marcarDespacho(id, el) {
+    const valor = el.checked;
+    el.disabled = true;
+    try {
+        await actualizarPedido(id, { despachado: valor });
+        const p = (pedidosList || []).find(x => x.id === id);
+        if (p) p.despachado = valor;
+
+        // Se repinta solo la fila para no perder el scroll de la tabla.
+        const fila = document.querySelector(`tr[data-ped="${CSS.escape(id)}"]`);
+        if (fila) {
+            fila.classList.toggle('despachado', valor);
+            const txt = fila.querySelector('.ped-check .txt');
+            if (txt) txt.textContent = valor ? 'Despachado' : 'Pendiente';
+            const entrega = fila.querySelector('td.ped-fecha:nth-child(4)');
+            if (entrega && p) entrega.classList.toggle('vencida', entregaVencida(p));
+        }
+        showToast(valor ? 'Pedido marcado como despachado' : 'Pedido devuelto a pendiente');
+    } catch (err) {
+        el.checked = !valor;   // revertir: no quedó guardado
+        showToast('No se pudo guardar: ' + err.message);
+    } finally {
+        el.disabled = false;
+    }
+}
+
+async function guardarGuia(id, el) {
+    const valor = el.value.trim();
+    const p = (pedidosList || []).find(x => x.id === id);
+    if (p && (p.noGuia || '') === valor) return;   // no cambió nada
+    try {
+        await actualizarPedido(id, { noGuia: valor || null });
+        if (p) p.noGuia = valor || null;
+        el.classList.add('guardado');
+        setTimeout(() => el.classList.remove('guardado'), 1200);
+    } catch (err) {
+        if (p) el.value = p.noGuia || '';   // devolver a lo último guardado
+        showToast('No se pudo guardar la guía: ' + err.message);
+    }
+}
+
+/* ======================================================================
+   AGENDA DE CONTACTOS
+   ====================================================================== */
+async function loadContactsAgenda() {
+    const data = await fetchAPI('contacts/list');
+    if (!Array.isArray(data)) {
+        throw new Error((data && data.error) || 'respuesta inesperada del servidor');
+    }
+    contactsList = data;
+    return data;
+}
+
+function contactChannelLabel(c) {
+    if (c.channel === 'web') return 'Chat Web';
+    if (c.channel === 'whatsapp') return 'WhatsApp';
+    return 'Sin canal registrado';
+}
+
+/* --- Filtro por canal de la agenda -------------------------------------
+   `channel` lo deduce el servidor de la coleccion donde esta la conversacion
+   cuando el registro es viejo y no lo trae (ver /api/contacts/list). Aun asi
+   puede quedar en null: un contacto sin conversacion asociada. Esos solo
+   aparecen bajo "Todos" y bajo su propio chip, que se muestra unicamente si
+   existe alguno.                                                          */
+let contactChannel = 'all';   // 'all' | 'whatsapp' | 'web' | 'none'
+
+function contactsByChannel(ch) {
+    if (!contactsList) return [];
+    if (ch === 'all') return contactsList;
+    if (ch === 'none') return contactsList.filter(c => !c.channel);
+    return contactsList.filter(c => c.channel === ch);
+}
+
+function setContactChannel(el) {
+    contactChannel = el.dataset.ch;
+    document.querySelectorAll('#contactFilterBar .chip')
+        .forEach(c => c.classList.toggle('on', c === el));
+    renderContacts();
+}
+
+function updateContactFilterCounts() {
+    const set = (id, n) => { const e = document.getElementById(id); if (e) e.textContent = n; };
+    set('chn-all', contactsList ? contactsList.length : 0);
+    set('chn-whatsapp', contactsByChannel('whatsapp').length);
+    set('chn-web', contactsByChannel('web').length);
+
+    // El chip de "sin canal" solo estorba si no hay ninguno.
+    const sin = contactsByChannel('none').length;
+    set('chn-none', sin);
+    const btn = document.querySelector('#contactFilterBar .chip[data-ch="none"]');
+    if (btn) btn.style.display = sin ? '' : 'none';
+    // Si el filtro activo se queda sin registros tras un refresco, volver a
+    // "Todos" en vez de dejar la agenda en blanco sin explicacion.
+    if (!sin && contactChannel === 'none') resetContactChannel();
+}
+
+function resetContactChannel() {
+    contactChannel = 'all';
+    document.querySelectorAll('#contactFilterBar .chip')
+        .forEach(c => c.classList.toggle('on', c.dataset.ch === 'all'));
+}
+
+// Lo mas util que se pueda mostrar bajo el nombre, en orden de preferencia.
+function contactSubtitle(c) {
+    if (c.phoneNumber) return '+' + c.phoneNumber;
+    if (c.email) return c.email;
+    if (c.username) return '@' + c.username;
+    return formatSessionId(c.phone);
+}
+
+async function renderContacts(opts = {}) {
+    const list = document.getElementById('sessionsList');
+
+    if (!contactsList) {
+        list.innerHTML = skeletonList();
+        try {
+            await loadContactsAgenda();
+        } catch (err) {
+            list.innerHTML = '<div class="loading"><p>Error: ' + escapeHtml(err.message) + '</p></div>';
+            return;
+        }
+        // Pudieron cambiar de vista mientras cargaba.
+        if (currentView !== 'contacts') return;
+    }
+
+    updateCounters();
+    list.classList.toggle('no-anim', !!opts.quiet);
+
+    if (!contactsList.length) {
+        list.innerHTML = '<div class="loading"><p>Todavía no hay contactos.<br>' +
+            'Se registran solos cuando un cliente escribe.</p></div>';
+        return;
+    }
+
+    updateContactFilterCounts();
+
+    // Primero el canal, luego la busqueda: asi el texto busca dentro de lo que
+    // el filtro dejo a la vista, que es lo que el usuario esta viendo.
+    const base = contactsByChannel(contactChannel);
+    const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+    const shown = !q ? base : base.filter(c =>
+        [c.name, c.email, c.phoneNumber, c.username, c.phone]
+            .some(v => v && String(v).toLowerCase().includes(q)));
+
+    if (!shown.length) {
+        const donde = contactChannel === 'whatsapp' ? ' de WhatsApp'
+                    : contactChannel === 'web' ? ' del chat web'
+                    : contactChannel === 'none' ? ' sin canal'
+                    : '';
+        list.innerHTML = '<div class="loading"><p>' + (q
+            ? 'Ningún contacto' + donde + ' coincide con “' + escapeHtml(q) + '”'
+            : 'No hay contactos' + donde + '.') + '</p></div>';
+        return;
+    }
+
+    list.innerHTML = shown.map((c, i) => {
+        const isWeb = c.channel === 'web';
+        // Sin canal conocido no se puede afirmar que sea WhatsApp.
+        const [chipCls, chipTxt] = isWeb ? ['web', 'Web']
+                                 : c.channel === 'whatsapp' ? ['wa', 'WA']
+                                 : ['none', '—'];
+        const extras = [];
+        if (c.chat) extras.push(c.chat.messageCount + ' mensajes');
+        if (c.mediaCount) extras.push(c.mediaCount + (c.mediaCount === 1 ? ' archivo' : ' archivos'));
+        return `
+        <div class="session-item ${currentContact === c.id ? 'active' : ''}" data-contact="${c.id}"
+             style="animation-delay:${Math.min(i * 22, 400)}ms" onclick="openContact('${c.id}')">
+            <div class="session-avatar ${isWeb ? 'web' : ''}">${escapeHtml(getInitials(c.name || c.phoneNumber || c.phone))}</div>
+            <div class="session-info">
+                <div class="session-name">${escapeHtml(c.name || 'Sin nombre')}</div>
+                <div class="session-contact">${escapeHtml(contactSubtitle(c))}</div>
+                <div class="session-preview">${escapeHtml(extras.join('  ·  ') || 'Sin conversación')}</div>
+            </div>
+            <div class="session-meta">
+                <div class="session-date">${formatDate(c.lastSeen || c.createdAt)}</div>
+                <span class="row-chip ${chipCls}" title="${escapeAttr(contactChannelLabel(c))}">${chipTxt}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openContact(id) {
+    const c = (contactsList || []).find(x => x.id === id);
+    if (!c) return;
+
+    currentContact = id;
+    currentSession = null;
+
+    document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+    const row = document.querySelector(`.session-item[data-contact="${id}"]`);
+    if (row) row.classList.add('active');
+
+    const area = document.getElementById('chatArea');
+    area.classList.remove('has-chat');
+    area.classList.add('has-contact');
+    document.body.classList.add('viewing-chat');
+
+    const isWeb = c.channel === 'web';
+    const wa = c.phoneNumber ? c.phoneNumber.replace(/^57/, '') : null;
+    const campo = (k, v, cls) => `
+        <div class="contact-field">
+            <div class="k">${k}</div>
+            <div class="v ${v ? (cls || '') : 'empty'}">${v || 'Sin registrar'}</div>
+        </div>`;
+
+    document.getElementById('contactPanel').innerHTML = `
+        <div class="contact-hero">
+            <button class="icon-btn back-btn" onclick="closeSession()" aria-label="Volver">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="session-avatar ${isWeb ? 'web' : ''}">${escapeHtml(getInitials(c.name || c.phoneNumber || c.phone))}</div>
+            <div>
+                <h2>${escapeHtml(c.name || 'Sin nombre')}</h2>
+                <div class="sub">
+                    <span class="row-chip ${isWeb ? 'web' : 'wa'}">${isWeb ? 'Chat Web' : 'WhatsApp'}</span>
+                    <span>${c.lastSeen ? 'Último mensaje ' + escapeHtml(formatFullDate(c.lastSeen))
+                                       : 'Sin actividad registrada'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="contact-card">
+            ${campo('Nombre', c.name ? escapeHtml(c.name) : '')}
+            ${campo('Celular', wa
+                ? `<a href="https://wa.me/57${escapeAttr(wa)}" target="_blank" rel="noopener">+57 ${escapeHtml(wa)}</a>`
+                : '')}
+            ${campo('Correo', c.email
+                ? `<a href="mailto:${escapeAttr(c.email)}">${escapeHtml(c.email)}</a>`
+                : '')}
+            ${campo('Usuario WhatsApp', c.username ? '@' + escapeHtml(c.username) : '')}
+            ${campo('Canal', escapeHtml(contactChannelLabel(c)))}
+            ${campo('Identidad de sesión', escapeHtml(c.phone), 'mono')}
+            ${campo('Registrado', escapeHtml(formatFullDate(c.createdAt)))}
+            ${campo('Archivos enviados', c.mediaCount
+                ? c.mediaCount + (c.mediaCount === 1 ? ' archivo' : ' archivos') : '')}
+        </div>
+
+        <div class="contact-actions">
+            ${c.chat ? `<button class="btn primary" onclick="openContactChat('${c.chat.id}','${c.chat.collection}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 20.5l1.5-4.9A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/>
+                </svg>
+                Ver conversación (${c.chat.messageCount})
+            </button>` : ''}
+            ${wa ? `<a class="btn" href="https://wa.me/57${escapeAttr(wa)}" target="_blank" rel="noopener">Escribir por WhatsApp</a>` : ''}
+            ${c.email ? `<a class="btn" href="mailto:${escapeAttr(c.email)}">Enviar correo</a>` : ''}
+        </div>
+
+        <p class="contact-note">
+            <b>Identidad de sesión</b> es la llave con la que el bot guarda la conversación
+            —${isWeb ? 'el identificador que genera el widget de la página'
+                     : 'el número o el user_id que manda WhatsApp'}—, no un teléfono.
+            El número real del cliente es el de <b>Celular</b>.
+        </p>`;
+}
+
+// Abre la conversacion del contacto, saltando a la vista donde de verdad esta.
+function openContactChat(chatId, col) {
+    const s = findSession(chatId);
+    const btn = s && s.archived
+        ? document.querySelector('.rail-btn[data-view="archived"]')
+        : document.querySelector(`.rail-btn[data-col="${col}"]`);
+    if (btn) (s && s.archived ? switchView : switchTab)(btn);
+    openSession(chatId, col);
+}
+
+async function openSession(docId, colOverride) {
+    const known = findSession(docId);
+    const col = colOverride || (known && known.collection) || currentCollection;
     currentSession = docId;
+    currentSessionCol = col;
+    currentContact = null;
 
     document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
     const active = document.querySelector(`.session-item[data-id="${docId}"]`);
     if (active) active.classList.add('active');
 
-    document.getElementById('chatArea').classList.add('has-chat');
+    const area = document.getElementById('chatArea');
+    area.classList.remove('has-contact');
+    area.classList.add('has-chat');
     document.body.classList.add('viewing-chat');
 
-    const isWeb = currentCollection === 'wa_chats_web';
+    const isWeb = col === 'wa_chats_web';
     const thread = document.getElementById('thread');
-    thread.classList.remove('has-msgs');
     thread.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando conversación…</p></div>';
+    document.getElementById('jumpBtn').classList.remove('show');
 
     try {
-        const data = await fetchAPI('messages', { collection: currentCollection, id: docId });
+        const data = await fetchAPI('messages', { collection: col, id: docId });
         const messages = data.messages || [];
+        updateArchiveBtn(!!data.archivedAt);
+        updateChatControls(data);
         const contactName = data.name;
         const sessionId = data.sessionId;
         const info = { name: contactName, sessionId, username: data.username };
@@ -1452,7 +2501,9 @@ async function openSession(docId) {
         }
         messages.forEach((m, i) => {
             const type = m.type || 'human';
-            const label = type === 'ai' ? 'Bot KosXpress' : userLabel;
+            // Bot y asesor se guardan los dos como 'ai'; sentBy los separa.
+            const esAsesor = m.sentBy === 'asesor';
+            const label = type === 'ai' ? (esAsesor ? 'Asesor' : 'Bot KosXpress') : userLabel;
             let body;
             if (type === 'human' && IMG_MARKER.test(m.content)) {
                 // Every stored file produces exactly one marker message, so the
@@ -1463,7 +2514,7 @@ async function openSession(docId) {
                 body = formatMarkdown(m.content);
             }
             html += `
-                <div class="msg ${type}" style="animation-delay:${Math.min(i * 26, 460)}ms">
+                <div class="msg ${type}${esAsesor ? ' asesor' : ''}" style="animation-delay:${Math.min(i * 26, 460)}ms">
                     <div class="msg-who">${escapeHtml(label)}</div>
                     <div class="msg-card">${body}</div>
                 </div>`;
@@ -1483,9 +2534,9 @@ async function openSession(docId) {
         }
 
         thread.innerHTML = html;
-        thread.classList.add('has-msgs');
         const scroller = document.getElementById('chatScroll');
-        scroller.scrollTop = scroller.scrollHeight;
+        scroller.scrollTop = scroller.scrollHeight;   // abre en lo mas reciente
+        updateJumpBtn();
 
         // Leida. Se usa el conteo que acaba de devolver /api/messages, que es
         // el mismo filterMessages() de /api/sessions, y se refresca el cache
@@ -1502,6 +2553,24 @@ async function openSession(docId) {
 
 function closeSession() {
     document.body.classList.remove('viewing-chat');
+}
+
+/* --- Volver a lo mas reciente ----------------------------------------- */
+// Umbral en px: por debajo de esto se considera que ya estas en el final y el
+// boton estorba.
+const JUMP_THRESHOLD = 280;
+
+function updateJumpBtn() {
+    const sc = document.getElementById('chatScroll');
+    const btn = document.getElementById('jumpBtn');
+    if (!sc || !btn) return;
+    const desdeElFinal = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+    btn.classList.toggle('show', desdeElFinal > JUMP_THRESHOLD);
+}
+
+function scrollToLatest() {
+    const sc = document.getElementById('chatScroll');
+    if (sc) sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' });
 }
 
 function escapeHtml(text) {
@@ -1610,28 +2679,95 @@ function formatMarkdown(text) {
     return html;
 }
 
-function switchTab(el) {
-    if (el.classList.contains('active')) return;
-    document.querySelectorAll('.rail-btn[data-col]').forEach(t => t.classList.remove('active'));
+function setRailActive(el) {
+    document.querySelectorAll('.rail-btn[data-col], .rail-btn[data-view]')
+        .forEach(b => b.classList.remove('active'));
     el.classList.add('active');
+}
+
+function closeDetail() {
+    const area = document.getElementById('chatArea');
+    area.classList.remove('has-chat', 'has-contact', 'has-pedidos', 'manual');
+    document.body.classList.remove('viewing-chat');
+    currentMode = 'auto';
+    currentPhone = null;
+}
+
+// Pinta el panel izquierdo segun la seccion elegida en el rail.
+function renderCurrentView(opts = {}) {
+    const search = document.getElementById('searchInput');
+    const filterBar = document.getElementById('filterBar');
+    const label = document.getElementById('channelLabel');
+
+    // "Solo pendientes" y "marcar leidas" solo tienen sentido en la bandeja;
+    // el filtro de canal, solo en la agenda.
+    if (filterBar) filterBar.style.display = currentView === 'inbox' ? '' : 'none';
+    const contactBar = document.getElementById('contactFilterBar');
+    if (contactBar) contactBar.style.display = currentView === 'contacts' ? '' : 'none';
+
+    // Pedidos es una tabla ancha: ocupa todo el ancho y no usa el panel izquierdo.
+    document.body.classList.toggle('view-pedidos', currentView === 'pedidos');
+    if (currentView === 'pedidos') {
+        document.getElementById('chatArea').classList.add('has-pedidos');
+        renderPedidos(opts);
+        return;
+    }
+
+    if (currentView === 'contacts') {
+        label.textContent = 'Agenda';
+        search.placeholder = 'Buscar contacto';
+        renderContacts(opts);
+    } else if (currentView === 'archived') {
+        label.textContent = 'Archivados';
+        search.placeholder = 'Buscar en archivados';
+        renderArchived(opts);
+    } else {
+        label.textContent = currentCollection === 'wa_chats_web' ? 'Chat Web' : 'WhatsApp';
+        search.placeholder = 'Buscar en las conversaciones';
+        renderSessions(opts);
+    }
+}
+
+function switchTab(el) {
+    setRailActive(el);
+    currentView = 'inbox';
     currentCollection = el.dataset.col;
     currentSession = null;
+    currentContact = null;
 
-    document.getElementById('channelLabel').textContent =
-        currentCollection === 'wa_chats_web' ? 'Chat Web' : 'WhatsApp';
-
-    document.getElementById('chatArea').classList.remove('has-chat');
-    document.body.classList.remove('viewing-chat');
+    closeDetail();
     document.getElementById('searchInput').value = '';
 
     // Las dos colecciones ya estan en memoria; el boton de actualizar es el
     // que vuelve a consultar el servidor.
-    if (sessionsByCol[currentCollection]) renderSessions();
+    if (sessionsByCol[currentCollection]) renderCurrentView();
     else loadSessions();
+}
+
+function switchView(el) {
+    setRailActive(el);
+    currentView = el.dataset.view;
+    currentSession = null;
+    currentContact = null;
+
+    closeDetail();
+    document.getElementById('searchInput').value = '';
+
+    // Pedidos y la agenda tienen su propia fuente de datos; las otras vistas
+    // necesitan las conversaciones cargadas.
+    const necesitaChats = currentView !== 'contacts' && currentView !== 'pedidos';
+    if (necesitaChats && !sessionsByCol[currentCollection]) loadSessions();
+    else renderCurrentView();
 }
 
 function handleSearch(q) {
     clearTimeout(searchTimeout);
+    // La agenda y los archivados ya estan en memoria: se filtran sin ir al
+    // servidor, asi el resultado es inmediato.
+    if (currentView === 'pedidos') return;          // no usa el buscador
+    if (currentView === 'contacts') return renderContacts();
+    if (currentView === 'archived') return renderArchived();
+
     searchTimeout = setTimeout(async () => {
         if (!q.trim()) return loadSessions();
 
@@ -1716,10 +2852,10 @@ async function refreshSessions(opts = {}) {
 
         // Con una busqueda en pantalla, repintar borraria los resultados:
         // solo se actualizan los contadores.
-        if (document.getElementById('searchInput').value.trim()) {
+        if (currentView === 'inbox' && document.getElementById('searchInput').value.trim()) {
             updateCounters();
         } else if (opts.force || sessionsSignature() !== before) {
-            renderSessions({ quiet: !!opts.quiet });
+            renderCurrentView({ quiet: !!opts.quiet });
         } else {
             updateCounters();
         }
@@ -1752,6 +2888,10 @@ document.addEventListener('visibilitychange', () => {
 
 function reloadAll() {
     // Manual: repinta siempre, para que se note que hizo algo.
+    contactsList = null;          // la agenda tambien se vuelve a pedir
+    // Los pedidos se releen de SQL, pero NO se sincroniza con Siesa: eso es
+    // una accion explicita, con su propio boton.
+    pedidosList = null;
     refreshSessions({ force: true });
     startAutoRefresh();   // reinicia la cuenta de los 5 minutos
 }
@@ -1792,6 +2932,7 @@ document.addEventListener('keydown', e => {
 let saved = 'light';
 try { saved = localStorage.getItem('kx-theme') || 'light'; } catch {}
 applyTheme(saved);
+document.getElementById('chatScroll').addEventListener('scroll', updateJumpBtn, { passive: true });
 loadSessions();
 startAutoRefresh();
 </script>
