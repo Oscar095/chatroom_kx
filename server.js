@@ -602,9 +602,11 @@ function urlRastreo(guia) {
 // La plantilla tiene encabezado con imagen, y Meta exige la imagen en CADA
 // envio: la que se sube al crear la plantilla es solo la muestra para la
 // revision. Sin esto responde 132012 "Parameter format does not match".
-// Tiene que ser una URL publica (Meta la descarga), PNG o JPEG, maximo 5 MB.
+// Tiene que ser una URL publica (Meta la descarga), PNG o JPEG, maximo 5 MB, y
+// SIN token SAS: un SAS caduca, y el dia que venza todos los avisos fallan.
 function imagenEncabezado() {
-    return process.env.KOSKI_IMAGEN_URL || 'https://kosxpress.com/images/logos/LOGOKOS.png';
+    return process.env.KOSKI_IMAGEN_URL ||
+        'https://datalakekos.blob.core.windows.net/images/products/1786723667985-cbcawm-ICONO%20DESPACHOS.png';
 }
 
 // POST /api/pedidos/notificar  { idTipoDocto, consecDocto, reenviar }
