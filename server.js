@@ -599,6 +599,14 @@ function urlRastreo(guia) {
         : base + encodeURIComponent(guia);
 }
 
+// La plantilla tiene encabezado con imagen, y Meta exige la imagen en CADA
+// envio: la que se sube al crear la plantilla es solo la muestra para la
+// revision. Sin esto responde 132012 "Parameter format does not match".
+// Tiene que ser una URL publica (Meta la descarga), PNG o JPEG, maximo 5 MB.
+function imagenEncabezado() {
+    return process.env.KOSKI_IMAGEN_URL || 'https://kosxpress.com/images/logos/LOGOKOS.png';
+}
+
 // POST /api/pedidos/notificar  { idTipoDocto, consecDocto, reenviar }
 // Le avisa al cliente que su pedido salio. Va por PLANTILLA aprobada y no por
 // texto libre: el cliente casi nunca tiene conversacion abierta, y fuera de la
@@ -649,6 +657,7 @@ app.post('/api/pedidos/notificar', async (req, res) => {
                     to: p.contacto,
                     guia: p.noGuia,
                     url: urlRastreo(p.noGuia),
+                    imagen: imagenEncabezado(),
                     pedido: p.id
                 }),
                 signal: AbortSignal.timeout(20000)
