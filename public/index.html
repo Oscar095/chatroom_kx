@@ -674,6 +674,16 @@
         }
         .msg.ai .msg-who { color: var(--kos-blue-deep); }
 
+        /* Hora del mensaje. Solo se pinta cuando se conoce de verdad: la
+           memoria del bot no guarda tiempo por mensaje, asi que hoy solo la
+           tienen los archivos (wa_media.receivedAt). */
+        .msg-time {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            color: var(--ink-muted);
+            margin: 5px 6px 0;
+        }
+
         .msg-card {
             position: relative;
             background: var(--surface);
@@ -1053,6 +1063,27 @@
             font-size: 12px;
             color: var(--ink-muted);
         }
+
+        /* Ventana de 24 h de WhatsApp vencida. Se muestra tambien en automatico,
+           que es justo cuando el asesor intenta tomar la conversacion. */
+        .ventana-aviso {
+            display: none;
+            position: relative; z-index: 2;
+            margin: 12px 26px 14px;
+            padding: 11px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--kos-orange) 45%, transparent);
+            background: color-mix(in srgb, var(--kos-orange) 12%, transparent);
+            font-size: 12px;
+            line-height: 1.55;
+            color: var(--ink);
+        }
+        .ventana-aviso b { color: var(--kos-orange-deep); }
+        .chat-area.has-chat.ventana-cerrada .ventana-aviso { display: block; }
+
+        .mode-switch button:disabled { opacity: .4; cursor: not-allowed; }
+        .mode-switch button:disabled:hover { color: var(--ink-muted); }
+        .composer textarea:disabled { opacity: .5; cursor: not-allowed; }
         .composer {
             display: none;
             position: relative; z-index: 2;
@@ -1121,7 +1152,45 @@
             letter-spacing: -.4px; color: var(--ink);
         }
         .ped-head .sub { font-size: 13px; color: var(--ink-muted); margin-top: 3px; }
-        .ped-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+        .ped-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+        .ped-search { position: relative; display: flex; align-items: center; }
+        .ped-search svg {
+            position: absolute; left: 12px;
+            width: 15px; height: 15px;
+            color: var(--ink-muted);
+            pointer-events: none;
+        }
+        .ped-search input {
+            width: 260px;
+            padding: 10px 14px 10px 34px;
+            border: 1px solid var(--line-strong);
+            border-radius: var(--r-md);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: var(--font); font-size: 13px;
+            outline: none;
+            transition: border-color .18s, box-shadow .18s;
+        }
+        .ped-search input::placeholder { color: var(--ink-muted); }
+        .ped-search input:focus {
+            border-color: var(--kos-blue);
+            box-shadow: 0 0 0 3px rgba(0,159,227,.14);
+        }
+        .ped-count {
+            position: absolute; right: 12px;
+            font-family: var(--mono); font-size: 10px;
+            color: var(--ink-muted);
+            pointer-events: none;
+        }
+        .ped-count:empty { display: none; }
+        .ped-sinres td {
+            text-align: center;
+            padding: 28px 12px;
+            color: var(--ink-muted);
+            font-size: 13.5px;
+        }
+        @media (max-width: 900px) { .ped-search input { width: 190px; } }
 
         .ped-wrap {
             background: var(--surface);
@@ -1174,6 +1243,30 @@
         }
         .ped-guia:focus { outline: none; border-color: var(--kos-blue); }
         .ped-guia.guardado { border-color: var(--kos-blue); }
+        .ped-guia.ped-contacto { width: 128px; }
+        .ped-guia.error { border-color: var(--kos-orange-deep); }
+
+        /* Aviso de despacho al cliente */
+        .ped-avisar {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 11px;
+            border-radius: 99px;
+            border: 1px solid var(--line-strong);
+            background: var(--surface);
+            color: var(--ink);
+            font-family: var(--font); font-size: 12px; font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background .15s, border-color .15s, opacity .15s;
+        }
+        .ped-avisar svg { width: 13px; height: 13px; }
+        .ped-avisar:hover:not(:disabled) { border-color: var(--kos-blue); color: var(--kos-blue); }
+        .ped-avisar:disabled { opacity: .45; cursor: not-allowed; }
+        .ped-avisar.enviado {
+            border-color: color-mix(in srgb, var(--kos-blue) 45%, transparent);
+            background: color-mix(in srgb, var(--kos-blue) 12%, transparent);
+            color: var(--kos-blue);
+        }
 
         /* Interruptor de despacho */
         .ped-check {
@@ -1309,6 +1402,16 @@
         <button class="chip" id="readAllChip" onclick="markAllRead()">Marcar todas leídas</button>
     </div>
 
+    <!-- Filtro de canal de los archivados -->
+    <div class="filter-bar" id="archivedFilterBar" style="display:none">
+        <button class="chip seg on" data-ch="all" onclick="setArchivedChannel(this)">
+            Todos <span class="chip-n" id="arn-all"></span></button>
+        <button class="chip seg" data-ch="whatsapp" onclick="setArchivedChannel(this)">
+            WhatsApp <span class="chip-n" id="arn-whatsapp"></span></button>
+        <button class="chip seg" data-ch="web" onclick="setArchivedChannel(this)">
+            Web <span class="chip-n" id="arn-web"></span></button>
+    </div>
+
     <!-- Filtro de canal, solo visible en la agenda -->
     <div class="filter-bar" id="contactFilterBar" style="display:none">
         <button class="chip seg on" data-ch="all" onclick="setContactChannel(this)">
@@ -1391,6 +1494,7 @@
         <div class="thread" id="thread"></div>
     </div>
 
+    <div class="ventana-aviso" id="ventanaAviso"></div>
     <div class="composer-hint" id="composerHint"></div>
     <div class="composer">
         <textarea id="composerText" rows="1" placeholder="Escribe tu mensaje al cliente…"
@@ -1654,6 +1758,24 @@ function formatFullDate(iso) {
     });
 }
 
+function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Sello para la esquina de un mensaje. Si cae el mismo dia que el inicio de la
+// conversacion basta la hora; si no, se antepone el dia.
+function stampFor(iso, refIso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const ref = refIso ? new Date(refIso) : null;
+    if (ref && !isNaN(ref) && d.toDateString() === ref.toDateString()) return formatTime(iso);
+    return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + formatTime(iso);
+}
+
 function getDateLabel(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -1824,18 +1946,27 @@ function renderArchived(opts = {}) {
     updateCounters();
     list.classList.toggle('no-anim', !!opts.quiet);
 
+    updateArchivedFilterCounts();
+
     if (!all.length) {
         list.innerHTML = '<div class="loading"><p>Todavía no has archivado ninguna conversación.<br>' +
             'Abre un chat y usa el botón de archivar.</p></div>';
         return;
     }
 
+    // Primero el canal, despues el texto: se busca dentro de lo que el filtro
+    // dejo a la vista.
+    const base = porCanal(all, archivedChannel);
     const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
-    const shown = !q ? all : all.filter(s =>
+    const shown = !q ? base : base.filter(s =>
         [s.name, s.sessionId, s.lastMessage].some(v => v && String(v).toLowerCase().includes(q)));
 
     if (!shown.length) {
-        list.innerHTML = '<div class="loading"><p>Nada archivado coincide con “' + escapeHtml(q) + '”</p></div>';
+        const donde = archivedChannel === 'whatsapp' ? ' de WhatsApp'
+                    : archivedChannel === 'web' ? ' del chat web' : '';
+        list.innerHTML = '<div class="loading"><p>' + (q
+            ? 'Nada archivado' + donde + ' coincide con “' + escapeHtml(q) + '”'
+            : 'No hay conversaciones archivadas' + donde + '.') + '</p></div>';
         return;
     }
 
@@ -1916,6 +2047,9 @@ function updateArchiveBtn(archivada) {
    ====================================================================== */
 let currentMode = 'auto';
 let currentPhone = null;
+// { abierta: true|false|null, horas, lastSeen } — lo calcula el servidor.
+// `null` en `abierta` = no se sabe (contacto sin registro): no se bloquea nada.
+let currentVentana = null;
 
 // WhatsApp Web solo sirve si conocemos un numero real. Las identidades nuevas
 // de Meta (CO.1586524026432871) no traen telefono: ahi no hay a quien escribir.
@@ -1924,6 +2058,43 @@ function resolvePhone(data) {
     if (/^57\d{10}$/.test(d)) return d;
     if (/^3\d{9}$/.test(d)) return '57' + d;
     return null;
+}
+
+function textoHoras(h) {
+    if (h == null) return 'un tiempo que no se conoce';
+    return h < 48 ? h.toFixed(1).replace('.0', '') + ' horas' : Math.floor(h / 24) + ' días';
+}
+
+// Refleja la ventana de 24 h de WhatsApp en los controles. Fuera de ella Meta
+// acepta el mensaje y no lo entrega, sin avisar, así que el panel prefiere no
+// dejar mandar antes que mostrar como enviado algo que el cliente no recibió.
+// El servidor valida lo mismo: esto es solo para que se entienda por qué.
+function aplicarVentana() {
+    const isWeb = currentSessionCol === 'wa_chats_web';
+    const cerrada = !isWeb && !!currentVentana && currentVentana.abierta === false;
+
+    document.getElementById('chatArea').classList.toggle('ventana-cerrada', cerrada);
+
+    const manual = document.querySelector('#modeSwitch button[data-mode="manual"]');
+    if (manual) {
+        manual.disabled = cerrada;
+        manual.title = cerrada
+            ? 'No se puede tomar la conversación: la ventana de 24 h está cerrada'
+            : '';
+    }
+
+    // Si la ventana se vence con la conversación ya tomada, el compositor se
+    // apaga igual: es el caso que el bloqueo de Manual no alcanza a cubrir.
+    document.getElementById('composerText').disabled = cerrada;
+    document.getElementById('sendBtn').disabled = cerrada;
+
+    if (cerrada) {
+        document.getElementById('ventanaAviso').innerHTML =
+            '<b>La ventana de 24 horas de WhatsApp está cerrada.</b> El cliente no escribe hace ' +
+            textoHoras(currentVentana.horas) + '. Meta aceptaría el mensaje pero no se lo entregaría, ' +
+            'así que no se puede tomar la conversación ni escribirle. Se reabre sola cuando el cliente ' +
+            'vuelva a escribir; para iniciar tú, hace falta una plantilla aprobada.';
+    }
 }
 
 function paintMode() {
@@ -1935,12 +2106,14 @@ function paintMode() {
     document.getElementById('composerHint').textContent = currentMode === 'manual'
         ? 'El bot está en pausa para este cliente. Lo que escribas aquí le llega por WhatsApp.'
         : '';
+    aplicarVentana();
 }
 
 function updateChatControls(data) {
     const isWeb = currentSessionCol === 'wa_chats_web';
     currentMode = data.mode === 'manual' ? 'manual' : 'auto';
     currentPhone = resolvePhone(data);
+    currentVentana = data.ventana || null;
 
     // El chat web no admite ni modo manual ni escribirle: se ocultan.
     document.getElementById('modeSwitch').style.display = isWeb ? 'none' : '';
@@ -1966,7 +2139,14 @@ async function setMode(mode) {
             body: JSON.stringify({ collection: currentSessionCol, id: currentSession, mode })
         });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+        if (!r.ok) {
+            // El servidor manda la ventana recalculada cuando rechaza por 24 h.
+            // Se adopta para que el panel deje de ofrecer algo imposible aunque
+            // la conversación se hubiera abierto hace rato.
+            if (d.ventana) { currentVentana = d.ventana; aplicarVentana(); }
+            throw new Error(d.error || 'el servidor respondió ' + r.status);
+        }
+        if (d.ventana) currentVentana = d.ventana;
 
         currentMode = mode;
         const s = findSession(currentSession);
@@ -2009,7 +2189,10 @@ async function sendMessage() {
             body: JSON.stringify({ collection: currentSessionCol, id: currentSession, text: texto })
         });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+        if (!r.ok) {
+            if (d.ventana) currentVentana = d.ventana;
+            throw new Error(d.error || 'el servidor respondió ' + r.status);
+        }
 
         box.value = '';
         autoGrow(box);
@@ -2021,6 +2204,8 @@ async function sendMessage() {
         showToast('No se envió: ' + err.message);
     } finally {
         btn.disabled = false;
+        // Vuelve a apagar el compositor si el rechazo fue por la ventana.
+        aplicarVentana();
     }
 }
 
@@ -2032,6 +2217,68 @@ async function sendMessage() {
    ====================================================================== */
 let pedidosList = null;
 let pedidosVerTodos = false;
+let pedidosQuery = '';
+
+// Busca por cliente, por documento y por guia. El cliente es lo que se pidio,
+// los otros dos salen gratis y evitan tener que recordar como se escribia.
+function pedidosFiltrados() {
+    const q = pedidosQuery.trim().toLowerCase();
+    if (!q) return pedidosList || [];
+    return (pedidosList || []).filter(p =>
+        [p.nombreCliente, p.noGuia, p.idTipoDocto + '-' + p.consecDocto]
+            .some(v => v && String(v).toLowerCase().includes(q)));
+}
+
+function filaPedido(p) {
+    return `
+        <tr class="${p.despachado ? 'despachado' : ''}" data-ped="${escapeAttr(p.id)}">
+            <td class="ped-doc">${escapeHtml(p.idTipoDocto)}-${p.consecDocto}</td>
+            <td class="ped-cliente">${escapeHtml(p.nombreCliente || '—')}</td>
+            <td class="ped-fecha">${escapeHtml(fechaCorta(p.fechaRegistro))}</td>
+            <td class="ped-fecha ${entregaVencida(p) ? 'vencida' : ''}">${escapeHtml(fechaCorta(p.fechaEntrega))}</td>
+            <td>
+                <input class="ped-guia" type="text" maxlength="100" placeholder="—"
+                       value="${escapeAttr(p.noGuia || '')}"
+                       onchange="guardarGuia('${escapeAttr(p.id)}', this)"
+                       onkeydown="if(event.key==='Enter')this.blur()">
+            </td>
+            <td>
+                <input class="ped-guia ped-contacto" type="text" maxlength="20" placeholder="3xx xxx xxxx"
+                       value="${escapeAttr(p.contacto || '')}"
+                       onchange="guardarContacto('${escapeAttr(p.id)}', this)"
+                       onkeydown="if(event.key==='Enter')this.blur()">
+            </td>
+            <td>
+                <label class="ped-check">
+                    <input type="checkbox" ${p.despachado ? 'checked' : ''}
+                           onchange="marcarDespacho('${escapeAttr(p.id)}', this)">
+                    <span class="caja">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                    </span>
+                    <span class="txt">${p.despachado ? 'Despachado' : 'Pendiente'}</span>
+                </label>
+            </td>
+            <td class="ped-aviso-celda">${botonAviso(p)}</td>
+        </tr>`;
+}
+
+// Al teclear se repinta SOLO el cuerpo de la tabla: repintar el panel entero
+// destruiria el input y se perderia el foco en cada letra.
+function filtrarPedidos(v) {
+    pedidosQuery = v;
+    const tbody = document.querySelector('#pedidosPanel table.ped tbody');
+    if (!tbody) return;
+    const filas = pedidosFiltrados();
+    tbody.innerHTML = filas.length
+        ? filas.map(filaPedido).join('')
+        : `<tr class="ped-sinres"><td colspan="8">Ningún pedido coincide con “${escapeHtml(v)}”</td></tr>`;
+    const cont = document.getElementById('pedCount');
+    if (cont) {
+        cont.textContent = pedidosQuery.trim()
+            ? filas.length + ' de ' + (pedidosList || []).length : '';
+    }
+}
 
 function fechaCorta(iso) {
     if (!iso) return '—';
@@ -2068,30 +2315,10 @@ async function renderPedidos(opts = {}) {
     const ultima = pedidosList.reduce((a, p) =>
         p.sincronizadoEn && (!a || new Date(p.sincronizadoEn) > new Date(a)) ? p.sincronizadoEn : a, null);
 
-    const filas = pedidosList.map(p => `
-        <tr class="${p.despachado ? 'despachado' : ''}" data-ped="${escapeAttr(p.id)}">
-            <td class="ped-doc">${escapeHtml(p.idTipoDocto)}-${p.consecDocto}</td>
-            <td class="ped-cliente">${escapeHtml(p.nombreCliente || '—')}</td>
-            <td class="ped-fecha">${escapeHtml(fechaCorta(p.fechaRegistro))}</td>
-            <td class="ped-fecha ${entregaVencida(p) ? 'vencida' : ''}">${escapeHtml(fechaCorta(p.fechaEntrega))}</td>
-            <td>
-                <input class="ped-guia" type="text" maxlength="100" placeholder="—"
-                       value="${escapeAttr(p.noGuia || '')}"
-                       onchange="guardarGuia('${escapeAttr(p.id)}', this)"
-                       onkeydown="if(event.key==='Enter')this.blur()">
-            </td>
-            <td>
-                <label class="ped-check">
-                    <input type="checkbox" ${p.despachado ? 'checked' : ''}
-                           onchange="marcarDespacho('${escapeAttr(p.id)}', this)">
-                    <span class="caja">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"
-                             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
-                    </span>
-                    <span class="txt">${p.despachado ? 'Despachado' : 'Pendiente'}</span>
-                </label>
-            </td>
-        </tr>`).join('');
+    const visibles = pedidosFiltrados();
+    const filas = visibles.length
+        ? visibles.map(filaPedido).join('')
+        : `<tr class="ped-sinres"><td colspan="8">Ningún pedido coincide con “${escapeHtml(pedidosQuery)}”</td></tr>`;
 
     panel.innerHTML = `
         <div class="ped-head">
@@ -2104,6 +2331,17 @@ async function renderPedidos(opts = {}) {
                 </div>
             </div>
             <div class="ped-actions">
+                <div class="ped-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+                    </svg>
+                    <input type="text" id="pedSearch" autocomplete="off"
+                           placeholder="Buscar cliente, documento o guía"
+                           value="${escapeAttr(pedidosQuery)}"
+                           oninput="filtrarPedidos(this.value)">
+                    <span class="ped-count" id="pedCount">${pedidosQuery.trim()
+                        ? visibles.length + ' de ' + pedidosList.length : ''}</span>
+                </div>
                 <button class="btn" onclick="alternarVerTodos()">
                     ${pedidosVerTodos ? 'Ver solo pendientes' : 'Ver todos'}
                 </button>
@@ -2124,7 +2362,8 @@ async function renderPedidos(opts = {}) {
                     <thead>
                         <tr>
                             <th>Documento</th><th>Cliente</th><th>Registro</th>
-                            <th>Entrega</th><th>No. guía</th><th>Despacho</th>
+                            <th>Entrega</th><th>No. guía</th><th>Contacto</th>
+                            <th>Despacho</th><th>Aviso al cliente</th>
                         </tr>
                     </thead>
                     <tbody>${filas}</tbody>
@@ -2172,6 +2411,7 @@ async function actualizarPedido(id, cambio) {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+    return d;
 }
 
 async function marcarDespacho(id, el) {
@@ -2197,6 +2437,8 @@ async function marcarDespacho(id, el) {
         showToast('No se pudo guardar: ' + err.message);
     } finally {
         el.disabled = false;
+        // Despachar habilita el aviso; devolverlo a pendiente lo apaga.
+        refrescarAviso(id);
     }
 }
 
@@ -2213,6 +2455,98 @@ async function guardarGuia(id, el) {
         if (p) el.value = p.noGuia || '';   // devolver a lo último guardado
         showToast('No se pudo guardar la guía: ' + err.message);
     }
+    refrescarAviso(id);
+}
+
+/* ----------------------------------------------------------------------
+   AVISO DE DESPACHO
+   El cliente casi nunca tiene una conversación abierta con el bot, así que
+   este mensaje sale por PLANTILLA aprobada de Meta y no por texto libre:
+   fuera de la ventana de 24 h el texto libre se acepta y no se entrega.
+   ---------------------------------------------------------------------- */
+const ICONO_AVION = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12l15.5-7.5-6 15.5-2.6-6.4z"/></svg>`;
+const ICONO_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>`;
+
+function botonAviso(p) {
+    // Los tres requisitos del mensaje: sin guía no hay qué rastrear, sin celular
+    // no hay a quién escribirle, y sin despachar el aviso sería falso.
+    const falta = [];
+    if (!p.despachado) falta.push('marcarlo despachado');
+    if (!p.noGuia) falta.push('el número de guía');
+    if (!p.contacto) falta.push('el celular de contacto');
+
+    const enviado = !!p.notificadoEn;
+    const titulo = falta.length ? 'Falta ' + falta.join(' y ')
+        : enviado ? 'Avisado el ' + formatFullDate(p.notificadoEn) + '. Clic para reenviar.'
+        : 'Avisarle al cliente que su pedido va en camino';
+
+    return `<button class="ped-avisar${enviado ? ' enviado' : ''}"${falta.length ? ' disabled' : ''}
+                    title="${escapeAttr(titulo)}"
+                    onclick="notificarPedido('${escapeAttr(p.id)}', this)">
+                ${enviado ? ICONO_CHECK : ICONO_AVION}${enviado ? 'Avisado' : 'Avisar'}
+            </button>`;
+}
+
+// Repinta solo el botón de una fila. Guía, contacto y despacho deciden los tres
+// si el aviso puede salir, así que cualquiera de ellos lo cambia.
+function refrescarAviso(id) {
+    const p = (pedidosList || []).find(x => x.id === id);
+    const celda = document.querySelector(`tr[data-ped="${CSS.escape(id)}"] .ped-aviso-celda`);
+    if (p && celda) celda.innerHTML = botonAviso(p);
+}
+
+async function guardarContacto(id, el) {
+    const valor = el.value.trim();
+    const p = (pedidosList || []).find(x => x.id === id);
+    if (p && (p.contacto || '') === valor) return;   // no cambió nada
+    try {
+        const d = await actualizarPedido(id, { contacto: valor || null });
+        if (p) {
+            p.contacto = d.contacto || null;
+            // El servidor borra el sello al cambiar de destinatario: quien
+            // recibió el aviso anterior no es este.
+            p.notificadoEn = null;
+        }
+        el.value = (p && p.contacto) || '';
+        el.classList.remove('error');
+        el.classList.add('guardado');
+        setTimeout(() => el.classList.remove('guardado'), 1200);
+    } catch (err) {
+        el.classList.add('error');
+        showToast('No se pudo guardar el contacto: ' + err.message);
+    }
+    refrescarAviso(id);
+}
+
+async function notificarPedido(id, btn) {
+    const p = (pedidosList || []).find(x => x.id === id);
+    if (!p) return;
+
+    // Reenviar se pregunta siempre: cada plantilla le cuesta a KOS y al cliente
+    // le llegaría dos veces el mismo aviso.
+    if (p.notificadoEn && !confirm(
+        'A este pedido ya se le avisó el ' + formatFullDate(p.notificadoEn) + '.\n\n' +
+        '¿Enviar el aviso otra vez a +' + p.contacto + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Enviando…';
+    try {
+        const r = await fetch('/api/pedidos/notificar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...partirId(id), reenviar: !!p.notificadoEn })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        p.notificadoEn = d.notificadoEn || new Date().toISOString();
+        showToast('Aviso enviado a +' + p.contacto);
+    } catch (err) {
+        showToast('No se pudo avisar: ' + err.message);
+    }
+    refrescarAviso(id);
 }
 
 /* ======================================================================
@@ -2241,11 +2575,40 @@ function contactChannelLabel(c) {
    existe alguno.                                                          */
 let contactChannel = 'all';   // 'all' | 'whatsapp' | 'web' | 'none'
 
+// El canal de un contacto viene en `channel`; el de una conversacion se
+// deduce de la coleccion en la que esta. Un solo repartidor sirve para las dos.
+function canalDe(x) {
+    if (x && x.channel !== undefined) return x.channel || null;
+    return x && x.collection === 'wa_chats_web' ? 'web' : 'whatsapp';
+}
+
+function porCanal(lista, ch) {
+    if (!Array.isArray(lista)) return [];
+    if (ch === 'all') return lista;
+    if (ch === 'none') return lista.filter(x => !canalDe(x));
+    return lista.filter(x => canalDe(x) === ch);
+}
+
 function contactsByChannel(ch) {
-    if (!contactsList) return [];
-    if (ch === 'all') return contactsList;
-    if (ch === 'none') return contactsList.filter(c => !c.channel);
-    return contactsList.filter(c => c.channel === ch);
+    return porCanal(contactsList, ch);
+}
+
+/* --- Filtro de canal de los archivados --------------------------------- */
+let archivedChannel = 'all';
+
+function setArchivedChannel(el) {
+    archivedChannel = el.dataset.ch;
+    document.querySelectorAll('#archivedFilterBar .chip')
+        .forEach(c => c.classList.toggle('on', c === el));
+    renderArchived();
+}
+
+function updateArchivedFilterCounts() {
+    const all = archivedAll();
+    const set = (id, n) => { const e = document.getElementById(id); if (e) e.textContent = n; };
+    set('arn-all', all.length);
+    set('arn-whatsapp', porCanal(all, 'whatsapp').length);
+    set('arn-web', porCanal(all, 'web').length);
 }
 
 function setContactChannel(el) {
@@ -2497,19 +2860,23 @@ async function openSession(docId, colOverride) {
 
         let html = '';
         if (data.startedAt) {
-            html += `<div class="date-sep"><span>${escapeHtml(getDateLabel(data.startedAt))}</span></div>`;
+            html += `<div class="date-sep"><span>${escapeHtml(
+                getDateLabel(data.startedAt) + ' · ' + formatTime(data.startedAt))}</span></div>`;
         }
         messages.forEach((m, i) => {
             const type = m.type || 'human';
             // Bot y asesor se guardan los dos como 'ai'; sentBy los separa.
             const esAsesor = m.sentBy === 'asesor';
             const label = type === 'ai' ? (esAsesor ? 'Asesor' : 'Bot KosXpress') : userLabel;
-            let body;
+            let body, sello = '';
             if (type === 'human' && IMG_MARKER.test(m.content)) {
                 // Every stored file produces exactly one marker message, so the
                 // Nth marker is the Nth file. The chat memory has no timestamps,
                 // so this ordering is the only link between the two collections.
-                body = renderMedia(media[mediaIdx++], m.content.replace(IMG_MARKER, ''));
+                const file = media[mediaIdx++];
+                body = renderMedia(file, m.content.replace(IMG_MARKER, ''));
+                // El archivo si trae hora real; el mensaje de texto, no.
+                if (file) sello = stampFor(file.receivedAt, data.startedAt);
             } else {
                 body = formatMarkdown(m.content);
             }
@@ -2517,6 +2884,7 @@ async function openSession(docId, colOverride) {
                 <div class="msg ${type}${esAsesor ? ' asesor' : ''}" style="animation-delay:${Math.min(i * 26, 460)}ms">
                     <div class="msg-who">${escapeHtml(label)}</div>
                     <div class="msg-card">${body}</div>
+                    ${sello ? `<div class="msg-time">${escapeHtml(sello)}</div>` : ''}
                 </div>`;
         });
 
@@ -2525,12 +2893,22 @@ async function openSession(docId, colOverride) {
         if (mediaIdx < media.length) {
             html += `<div class="date-sep"><span>Archivos sin ubicar</span></div>`;
             media.slice(mediaIdx).forEach(file => {
+                const sello = stampFor(file.receivedAt, data.startedAt);
                 html += `
                     <div class="msg human">
                         <div class="msg-who">${escapeHtml(userLabel)}</div>
                         <div class="msg-card">${renderMedia(file, '')}</div>
+                        ${sello ? `<div class="msg-time">${escapeHtml(sello)}</div>` : ''}
                     </div>`;
             });
+        }
+
+        // Cierre del hilo. `lastSeen` es lo unico que dice cuando fue el ultimo
+        // movimiento: la memoria del bot no guarda hora por mensaje.
+        if (data.lastSeen) {
+            html += `<div class="date-sep"><span>${escapeHtml(
+                'Último mensaje · ' + getDateLabel(data.lastSeen) + ' · ' + formatTime(data.lastSeen)
+            )}</span></div>`;
         }
 
         thread.innerHTML = html;
@@ -2687,10 +3065,14 @@ function setRailActive(el) {
 
 function closeDetail() {
     const area = document.getElementById('chatArea');
-    area.classList.remove('has-chat', 'has-contact', 'has-pedidos', 'manual');
+    area.classList.remove('has-chat', 'has-contact', 'has-pedidos', 'manual', 'ventana-cerrada');
     document.body.classList.remove('viewing-chat');
     currentMode = 'auto';
     currentPhone = null;
+    // Sin esto, el compositor del siguiente chat podria abrir apagado.
+    currentVentana = null;
+    document.getElementById('composerText').disabled = false;
+    document.getElementById('sendBtn').disabled = false;
 }
 
 // Pinta el panel izquierdo segun la seccion elegida en el rail.
@@ -2704,6 +3086,8 @@ function renderCurrentView(opts = {}) {
     if (filterBar) filterBar.style.display = currentView === 'inbox' ? '' : 'none';
     const contactBar = document.getElementById('contactFilterBar');
     if (contactBar) contactBar.style.display = currentView === 'contacts' ? '' : 'none';
+    const archBar = document.getElementById('archivedFilterBar');
+    if (archBar) archBar.style.display = currentView === 'archived' ? '' : 'none';
 
     // Pedidos es una tabla ancha: ocupa todo el ancho y no usa el panel izquierdo.
     document.body.classList.toggle('view-pedidos', currentView === 'pedidos');

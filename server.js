@@ -26,6 +26,45 @@ async function connectDB() {
     console.log('Conectado a MongoDB Atlas');
 }
 
+// La ventana de servicio al cliente de WhatsApp: Meta solo entrega texto libre
+// dentro de las 24 h siguientes al ULTIMO MENSAJE DEL CLIENTE. Pasado ese plazo
+// la API no rechaza el envio: responde 200 con un wamid y descarta la entrega en
+// silencio (error 131047), que solo se ve por el webhook de estados de mensaje
+// — que este panel no escucha. Por eso la ventana se calcula aqui y se bloquea
+// antes de mandar: es preferible negar el envio a mostrarle al asesor como
+// entregado algo que el cliente nunca recibio.
+//
+// `contacts.lastSeen` es el reloj porque lo escribe `Guardar Contacto`, que
+// cuelga de los tres parsers y por tanto corre en cada mensaje entrante, incluso
+// con la conversacion en manual (ahi el agente no corre, pero ese nodo si).
+const VENTANA_HORAS = 24;
+
+function ventana24(lastSeen) {
+    const t = lastSeen ? new Date(lastSeen).getTime() : NaN;
+    // `abierta: null` = no se sabe (contacto sin registro). No se bloquea: hay
+    // chats anteriores a la coleccion `contacts` y negarles todo los dejaria
+    // inservibles. La UI avisa que el dato falta.
+    if (!Number.isFinite(t)) return { abierta: null, horas: null, lastSeen: null };
+
+    const horas = (Date.now() - t) / 36e5;
+    return {
+        abierta: horas < VENTANA_HORAS,
+        horas: Math.round(horas * 10) / 10,
+        lastSeen: new Date(t).toISOString()
+    };
+}
+
+function textoHoras(h) {
+    if (h == null) return 'un tiempo que no se conoce';
+    return h < 48 ? h.toFixed(1) + ' h' : Math.floor(h / 24) + ' dias';
+}
+
+function errorVentana(v, accion) {
+    return 'No se puede ' + accion + ': el cliente no escribe hace ' + textoHoras(v.horas) +
+        ' y la ventana de 24 h de WhatsApp esta cerrada. Meta aceptaria el mensaje pero no lo ' +
+        'entregaria. Hay que esperar a que el cliente escriba, o usar una plantilla aprobada.';
+}
+
 // Some historical messages were stored as the raw webhook payload
 // (e.g. {"message":"...","sessionId":"...","timestamp":"..."}). Unwrap them.
 function cleanContent(raw) {
@@ -207,6 +246,8 @@ app.get('/api/messages', async (req, res) => {
             phoneNumber: contact ? contact.phoneNumber : null,
             startedAt: doc._id.getTimestamp().toISOString(),
             lastSeen: contact ? contact.lastSeen : null,
+            // El panel apaga el boton de Manual y el compositor con esto.
+            ventana: ventana24(contact ? contact.lastSeen : null),
             archivedAt: doc.archivedAt || null,
             mode: doc.mode === 'manual' ? 'manual' : 'auto',
             messages: filterMessages(doc.messages),
@@ -358,15 +399,31 @@ app.post('/api/mode', async (req, res) => {
             return res.status(400).json({ error: 'el chat web no admite modo manual' });
         }
 
-        const result = await db.collection(collection).updateOne(
+        const doc = await db.collection(collection).findOne({ _id: new ObjectId(id) });
+        if (!doc) return res.status(404).json({ error: 'No encontrado' });
+
+        // Tomar la conversacion con la ventana vencida no sirve de nada: el bot
+        // se calla y el asesor tampoco puede escribir, asi que el cliente se
+        // queda sin nadie. Volver a automatico siempre se permite.
+        const sid = doc.sessionId == null ? null : String(doc.sessionId);
+        const contact = sid ? (await loadContacts())[sid] : null;
+        const ventana = ventana24(contact ? contact.lastSeen : null);
+
+        if (mode === 'manual' && ventana.abierta === false) {
+            return res.status(409).json({
+                error: errorVentana(ventana, 'poner la conversacion en Manual'),
+                ventana
+            });
+        }
+
+        await db.collection(collection).updateOne(
             { _id: new ObjectId(id) },
             mode === 'manual'
                 ? { $set: { mode: 'manual', manualSince: new Date().toISOString() } }
                 : { $unset: { mode: '', manualSince: '' } }
         );
-        if (!result.matchedCount) return res.status(404).json({ error: 'No encontrado' });
 
-        res.json({ ok: true, mode });
+        res.json({ ok: true, mode, ventana });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -403,6 +460,15 @@ app.post('/api/send', async (req, res) => {
         }
         if (doc.mode !== 'manual') {
             return res.status(409).json({ error: 'pon la conversacion en Manual antes de escribir' });
+        }
+
+        // Se revisa aqui tambien, y no solo al activar Manual, porque la ventana
+        // puede vencerse con la conversacion ya tomada. Sin esta guarda el
+        // mensaje se guardaria como enviado y el cliente nunca lo recibiria.
+        const contacto = (await loadContacts())[String(doc.sessionId)];
+        const ventana = ventana24(contacto ? contacto.lastSeen : null);
+        if (ventana.abierta === false) {
+            return res.status(409).json({ error: errorVentana(ventana, 'enviar'), ventana });
         }
 
         let respuesta;
@@ -481,15 +547,15 @@ app.post('/api/pedidos/sincronizar', async (req, res) => {
     }
 });
 
-// POST /api/pedidos/actualizar  { idTipoDocto, consecDocto, despachado, noGuia }
-// Solo toca las dos columnas del asesor; lo que viene de Siesa no se edita.
+// POST /api/pedidos/actualizar  { idTipoDocto, consecDocto, despachado, noGuia, contacto }
+// Solo toca las columnas del asesor; lo que viene de Siesa no se edita.
 app.post('/api/pedidos/actualizar', async (req, res) => {
     try {
-        const { idTipoDocto, consecDocto, despachado, noGuia } = req.body || {};
+        const { idTipoDocto, consecDocto, despachado, noGuia, contacto } = req.body || {};
         if (!idTipoDocto || !Number.isFinite(Number(consecDocto))) {
             return res.status(400).json({ error: 'falta idTipoDocto o consecDocto' });
         }
-        if (despachado === undefined && noGuia === undefined) {
+        if (despachado === undefined && noGuia === undefined && contacto === undefined) {
             return res.status(400).json({ error: 'no hay nada que actualizar' });
         }
         if (noGuia !== undefined && noGuia !== null && String(noGuia).length > 100) {
@@ -500,9 +566,108 @@ app.post('/api/pedidos/actualizar', async (req, res) => {
         if (despachado !== undefined) cambio.despachado = !!despachado;
         if (noGuia !== undefined) cambio.noGuia = noGuia;
 
+        if (contacto !== undefined) {
+            const vacio = contacto === null || String(contacto).trim() === '';
+            // Se valida al guardar y no al enviar: un numero mal escrito que
+            // solo falla al final deja al asesor creyendo que ya avisó.
+            const normalizado = vacio ? null : pedidos.normalizarCelular(contacto);
+            if (!vacio && !normalizado) {
+                return res.status(400).json({
+                    error: 'el celular no es valido: se espera un movil colombiano, como 3235663950'
+                });
+            }
+            cambio.contacto = normalizado;
+        }
+
         const ok = await pedidos.actualizar(String(idTipoDocto), Number(consecDocto), cambio);
         if (!ok) return res.status(404).json({ error: 'pedido no encontrado' });
-        res.json({ ok: true });
+        // Se devuelve el celular ya normalizado para que el panel muestre lo que
+        // realmente quedó guardado y no lo que el asesor tecleó.
+        res.json(contacto !== undefined ? { ok: true, contacto: cambio.contacto } : { ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// La URL de rastreo de TCC es provisional y por eso viaja como PARAMETRO de la
+// plantilla, no dentro de ella: cambiarla es tocar el .env, mientras que si
+// estuviera en el texto aprobado habria que volver a pasar por revision de Meta.
+function urlRastreo(guia) {
+    const base = process.env.TCC_RASTREO_URL || 'https://www.tcc.com/rastreo/?{guia}';
+    return base.includes('{guia}')
+        ? base.replace('{guia}', encodeURIComponent(guia))
+        : base + encodeURIComponent(guia);
+}
+
+// POST /api/pedidos/notificar  { idTipoDocto, consecDocto, reenviar }
+// Le avisa al cliente que su pedido salio. Va por PLANTILLA aprobada y no por
+// texto libre: el cliente casi nunca tiene conversacion abierta, y fuera de la
+// ventana de 24 h Meta acepta el texto y lo descarta sin avisar (ver /api/send).
+app.post('/api/pedidos/notificar', async (req, res) => {
+    try {
+        const { idTipoDocto, consecDocto, reenviar } = req.body || {};
+        if (!idTipoDocto || !Number.isFinite(Number(consecDocto))) {
+            return res.status(400).json({ error: 'falta idTipoDocto o consecDocto' });
+        }
+        if (!process.env.N8N_DESPACHO_URL || !process.env.N8N_SEND_TOKEN) {
+            return res.status(503).json({ error: 'falta N8N_DESPACHO_URL o N8N_SEND_TOKEN en el .env' });
+        }
+
+        // Se relee de SQL en vez de confiar en lo que manda el panel: el aviso
+        // le cuesta plata a KOS y le llega a un cliente, asi que la guia y el
+        // destinatario salen de la base, no del navegador.
+        const p = await pedidos.obtener(String(idTipoDocto), Number(consecDocto));
+        if (!p) return res.status(404).json({ error: 'pedido no encontrado' });
+
+        if (!p.contacto) {
+            return res.status(400).json({ error: 'el pedido no tiene celular de contacto' });
+        }
+        if (!p.noGuia) {
+            return res.status(400).json({ error: 'el pedido no tiene numero de guia' });
+        }
+        // El mensaje afirma que el pedido va en camino. Si no esta despachado,
+        // seria mentira, y una mentira que el cliente puede verificar.
+        if (!p.despachado) {
+            return res.status(409).json({ error: 'marca el pedido como despachado antes de avisarle al cliente' });
+        }
+        if (p.notificadoEn && !reenviar) {
+            return res.status(409).json({
+                error: 'a este pedido ya se le aviso el ' + new Date(p.notificadoEn).toLocaleString('es-CO'),
+                yaNotificado: true
+            });
+        }
+
+        let respuesta;
+        try {
+            const r = await fetch(process.env.N8N_DESPACHO_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-chatroom-token': process.env.N8N_SEND_TOKEN
+                },
+                body: JSON.stringify({
+                    to: p.contacto,
+                    guia: p.noGuia,
+                    url: urlRastreo(p.noGuia),
+                    pedido: p.id
+                }),
+                signal: AbortSignal.timeout(20000)
+            });
+            respuesta = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                return res.status(502).json({ error: respuesta.error || 'n8n respondio ' + r.status });
+            }
+        } catch (err) {
+            return res.status(502).json({ error: 'no se pudo contactar n8n: ' + err.message });
+        }
+
+        if (!respuesta.ok) {
+            return res.status(502).json({ error: respuesta.error || 'WhatsApp no acepto el aviso' });
+        }
+
+        // Se sella solo despues de que Meta acepto, igual que en /api/send.
+        await pedidos.marcarNotificado(String(idTipoDocto), Number(consecDocto), respuesta.id);
+        res.json({ ok: true, id: respuesta.id, notificadoEn: new Date().toISOString() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

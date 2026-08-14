@@ -49,3 +49,26 @@ BEGIN
         INCLUDE (fecha_entrega, nombre_cliente);
 END
 GO
+
+-- Columnas agregadas despues de la primera version. Van como ALTER aparte para
+-- que el archivo sirva igual en una base nueva y en una que ya tiene la tabla.
+--
+-- `contacto` es el celular al que se le avisa que el pedido salio. Es del
+-- asesor, igual que `no_guia` y `despachado`: la sincronizacion NO lo toca.
+-- Se guarda normalizado a 57XXXXXXXXXX, el mismo formato que usa `sessionId`
+-- en wa_chats, para que un dia se puedan cruzar pedido y conversacion.
+IF COL_LENGTH('kx.pedidos', 'contacto') IS NULL
+    ALTER TABLE kx.pedidos ADD contacto NVARCHAR(20) NULL;
+GO
+
+-- Sello del aviso enviado. Existe para no volver a cobrarle a KOS una plantilla
+-- ya mandada y, sobre todo, para no repetirle el mensaje al cliente.
+IF COL_LENGTH('kx.pedidos', 'notificado_en') IS NULL
+    ALTER TABLE kx.pedidos ADD notificado_en DATETIME2(3) NULL;
+GO
+
+-- El id que devuelve Meta. Es lo unico con lo que se puede rastrear el envio
+-- en el log de n8n o en el Administrador de WhatsApp si el cliente reclama.
+IF COL_LENGTH('kx.pedidos', 'notificacion_wamid') IS NULL
+    ALTER TABLE kx.pedidos ADD notificacion_wamid NVARCHAR(120) NULL;
+GO

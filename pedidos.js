@@ -67,9 +67,21 @@ async function traerDeSiesa() {
     })).filter(p => p.idTipoDocto && Number.isFinite(p.consecDocto));
 }
 
+// Mismo criterio que `Preparar Contacto Web` en n8n: se acepta con o sin
+// indicativo y se guarda siempre como 57XXXXXXXXXX. Importa que sea el mismo
+// formato del `sessionId` de wa_chats: es lo que permitiría cruzar un pedido
+// con su conversación sin adivinar.
+function normalizarCelular(valor) {
+    const d = String(valor == null ? '' : valor).replace(/\D/g, '');
+    if (/^3\d{9}$/.test(d)) return '57' + d;
+    if (/^573\d{9}$/.test(d)) return d;
+    return null;
+}
+
 // Trae de Siesa y refleja el resultado en SQL. El MERGE actualiza SOLO las
-// columnas que vienen de la API: `no_guia` y `despachado` son del asesor y
-// pisarlas le borraría el trabajo.
+// columnas que vienen de la API. `no_guia`, `despachado`, `contacto` y los
+// campos de notificación son del asesor: pisarlos le borraría el trabajo, y en
+// el caso de `notificado_en` haría que al cliente le llegue el aviso dos veces.
 async function sincronizar() {
     const pedidos = await traerDeSiesa();
     const cx = await conectar();
@@ -137,14 +149,20 @@ async function listar({ soloPendientes = true, incluirDespachados = true } = {})
     if (!incluirDespachados) filtros.push('despachado = 0');
 
     const r = await cx.request().query(`
-        SELECT id_tipo_docto, consec_docto, fecha_registro, nombre_cliente,
-               fecha_entrega, no_guia, despachado, despachado_en, pendiente,
-               sincronizado_en
+        SELECT ${COLUMNAS}
           FROM kx.pedidos
          ${filtros.length ? 'WHERE ' + filtros.join(' AND ') : ''}
          ORDER BY despachado ASC, fecha_entrega DESC, consec_docto DESC;`);
 
-    return r.recordset.map(f => ({
+    return r.recordset.map(fila);
+}
+
+const COLUMNAS = `id_tipo_docto, consec_docto, fecha_registro, nombre_cliente,
+                  fecha_entrega, no_guia, despachado, despachado_en, pendiente,
+                  sincronizado_en, contacto, notificado_en, notificacion_wamid`;
+
+function fila(f) {
+    return {
         id: f.id_tipo_docto + '-' + f.consec_docto,
         idTipoDocto: f.id_tipo_docto,
         consecDocto: f.consec_docto,
@@ -155,13 +173,47 @@ async function listar({ soloPendientes = true, incluirDespachados = true } = {})
         despachado: !!f.despachado,
         despachadoEn: f.despachado_en,
         pendiente: !!f.pendiente,
-        sincronizadoEn: f.sincronizado_en
-    }));
+        sincronizadoEn: f.sincronizado_en,
+        contacto: f.contacto,
+        notificadoEn: f.notificado_en,
+        notificacionWamid: f.notificacion_wamid
+    };
 }
 
-// Actualiza lo que el asesor puede tocar. `despachado` y `noGuia` son
-// opcionales por separado: se actualiza solo lo que venga.
-async function actualizar(idTipoDocto, consecDocto, { despachado, noGuia }) {
+// Un solo pedido. Lo usa la ruta de notificación, que necesita releer guía,
+// contacto y `notificado_en` del servidor y no fiarse de lo que mande el panel.
+async function obtener(idTipoDocto, consecDocto) {
+    const cx = await conectar();
+    const req = cx.request();
+    req.input('tipo', sql.VarChar(10), idTipoDocto);
+    req.input('consec', sql.Int, consecDocto);
+    const r = await req.query(`
+        SELECT ${COLUMNAS} FROM kx.pedidos
+         WHERE id_tipo_docto = @tipo AND consec_docto = @consec;`);
+    return r.recordset[0] ? fila(r.recordset[0]) : null;
+}
+
+// Sella el aviso ya entregado a Meta. Se llama DESPUÉS de que WhatsApp acepta,
+// nunca antes: al revés, un fallo dejaría el pedido marcado como notificado y
+// el cliente nunca se enteraría de que su pedido salió.
+async function marcarNotificado(idTipoDocto, consecDocto, wamid) {
+    const cx = await conectar();
+    const req = cx.request();
+    req.input('tipo', sql.VarChar(10), idTipoDocto);
+    req.input('consec', sql.Int, consecDocto);
+    req.input('wamid', sql.NVarChar(120), wamid || null);
+    const r = await req.query(`
+        UPDATE kx.pedidos
+           SET notificado_en = SYSDATETIME(), notificacion_wamid = @wamid,
+               actualizado_en = SYSDATETIME()
+         WHERE id_tipo_docto = @tipo AND consec_docto = @consec;
+        SELECT @@ROWCOUNT AS n;`);
+    return r.recordset[0].n > 0;
+}
+
+// Actualiza lo que el asesor puede tocar. Los tres campos son opcionales por
+// separado: se actualiza solo lo que venga.
+async function actualizar(idTipoDocto, consecDocto, { despachado, noGuia, contacto }) {
     const cx = await conectar();
     const req = cx.request();
     req.input('tipo', sql.VarChar(10), idTipoDocto);
@@ -178,6 +230,15 @@ async function actualizar(idTipoDocto, consecDocto, { despachado, noGuia }) {
         req.input('noGuia', sql.NVarChar(100), noGuia ? String(noGuia).trim() : null);
         sets.push('no_guia = @noGuia');
     }
+    if (contacto !== undefined) {
+        // Vacío borra el contacto; con valor ya viene normalizado desde la ruta.
+        req.input('contacto', sql.NVarChar(20), contacto || null);
+        sets.push('contacto = @contacto');
+        // Cambiar de destinatario invalida el aviso anterior: el que lo recibió
+        // no era este. Si no se limpiara, el panel diría "notificado" y el
+        // contacto nuevo nunca sabría que su pedido salió.
+        sets.push('notificado_en = NULL', 'notificacion_wamid = NULL');
+    }
 
     const r = await req.query(`
         UPDATE kx.pedidos SET ${sets.join(', ')}
@@ -187,4 +248,7 @@ async function actualizar(idTipoDocto, consecDocto, { despachado, noGuia }) {
     return r.recordset[0].n > 0;
 }
 
-module.exports = { conectar, cerrar, sincronizar, listar, actualizar, traerDeSiesa };
+module.exports = {
+    conectar, cerrar, sincronizar, listar, obtener, actualizar,
+    marcarNotificado, normalizarCelular, traerDeSiesa
+};
