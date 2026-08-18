@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const { MongoClient, ObjectId } = require('mongodb');
 const pedidos = require('./pedidos');
+const transportadoras = require('./transportadoras');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -679,6 +680,91 @@ app.post('/api/pedidos/notificar', async (req, res) => {
         // Se sella solo despues de que Meta acepto, igual que en /api/send.
         await pedidos.marcarNotificado(String(idTipoDocto), Number(consecDocto), respuesta.id);
         res.json({ ok: true, id: respuesta.id, notificadoEn: new Date().toISOString() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/* --- Transportadoras ---------------------------------------------------
+   Directorio que llena el asesor a mano: nombre + pagina de rastreo. Vive en
+   SQL Server junto a los pedidos y no en Mongo, y comparte su conexion
+   perezosa: si SQL esta caido, el resto del panel sigue en pie.
+
+   La URL se guarda tal cual se escribio, con su marcador {guia} si lo lleva.
+   Es el mismo convenio de TCC_RASTREO_URL, para que el dia que el aviso de
+   despacho deje de estar clavado en TCC pueda salir de esta tabla.         */
+
+// GET /api/transportadoras
+app.get('/api/transportadoras', async (req, res) => {
+    try {
+        res.json(await transportadoras.listar());
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/transportadoras/guardar  { id?, nombre, urlRastreo }
+// Sin `id` crea; con `id` actualiza solo los campos que lleguen.
+app.post('/api/transportadoras/guardar', async (req, res) => {
+    try {
+        const { id, nombre, urlRastreo } = req.body || {};
+        const editar = id !== undefined && id !== null && String(id).trim() !== '';
+        if (editar && !Number.isFinite(Number(id))) {
+            return res.status(400).json({ error: 'el id no es valido' });
+        }
+
+        const cambio = {};
+        if (nombre !== undefined) {
+            const n = transportadoras.normalizarNombre(nombre);
+            if (!n) return res.status(400).json({ error: 'la transportadora necesita un nombre' });
+            if (n.length > 120) return res.status(400).json({ error: 'el nombre supera 120 caracteres' });
+            cambio.nombre = n;
+        }
+        if (urlRastreo !== undefined) {
+            // Se valida al guardar y no cuando alguien haga clic: una URL rota
+            // que solo falla al usarla deja al asesor creyendo que quedo bien.
+            const u = transportadoras.normalizarUrl(urlRastreo);
+            if (!u) {
+                return res.status(400).json({
+                    error: 'la URL de rastreo no es valida: debe empezar por http:// o https://'
+                });
+            }
+            if (u.length > 500) return res.status(400).json({ error: 'la URL supera 500 caracteres' });
+            cambio.urlRastreo = u;
+        }
+
+        if (!editar && (!cambio.nombre || !cambio.urlRastreo)) {
+            return res.status(400).json({ error: 'falta el nombre o la URL de rastreo' });
+        }
+        if (editar && !Object.keys(cambio).length) {
+            return res.status(400).json({ error: 'no hay nada que actualizar' });
+        }
+
+        const t = editar
+            ? await transportadoras.actualizar(Number(id), cambio)
+            : await transportadoras.crear(cambio);
+        if (!t) return res.status(404).json({ error: 'transportadora no encontrada' });
+
+        // Se devuelve la fila guardada, no lo que mando el panel: asi el id de
+        // una recien creada vuelve al navegador y la fila queda editable.
+        res.json({ ok: true, transportadora: t });
+    } catch (err) {
+        if (transportadoras.esNombreDuplicado(err)) {
+            return res.status(409).json({ error: 'ya hay una transportadora con ese nombre' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/transportadoras/eliminar  { id }
+app.post('/api/transportadoras/eliminar', async (req, res) => {
+    try {
+        const { id } = req.body || {};
+        if (!Number.isFinite(Number(id))) return res.status(400).json({ error: 'falta el id' });
+
+        const ok = await transportadoras.eliminar(Number(id));
+        if (!ok) return res.status(404).json({ error: 'transportadora no encontrada' });
+        res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

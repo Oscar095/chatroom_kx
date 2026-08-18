@@ -900,6 +900,7 @@
         }
         .rail-btn[data-view="archived"].active { background: rgba(125,156,184,.22); }
         .rail-btn[data-view="contacts"].active { background: rgba(0,159,227,.18); }
+        .rail-btn[data-view="transportadoras"].active { background: rgba(242,140,48,.18); }
 
         /* La accion de restaurar tiene que verse siempre: las filas archivadas
            suelen tener mensajes sin leer, y .unread esconde .row-action. */
@@ -1132,7 +1133,8 @@
            ================================================================ */
         body.view-pedidos .sidebar { display: none; }
 
-        .pedidos-panel {
+        .pedidos-panel,
+        .trans-panel {
             display: none;
             position: relative; z-index: 2;
             flex: 1;
@@ -1298,6 +1300,91 @@
 
         .ped-vacio { padding: 40px 20px; text-align: center; color: var(--ink-muted); font-size: 14px; }
 
+        /* ================================================================
+           TRANSPORTADORAS
+           Directorio que llena el asesor. Reusa la caja y la tabla de Pedidos
+           (.ped-wrap, .ped-scroll, table.ped): son la misma vista ancha y un
+           segundo juego de estilos solo se desincronizaria con el primero.
+           ================================================================ */
+        body.view-trans .sidebar { display: none; }
+        .chat-area.has-trans .trans-panel { display: block; }
+        .chat-area.has-trans .empty-state { display: none; }
+
+        table.trans { min-width: 720px; }
+        table.trans th.col-acciones { text-align: right; }
+
+        /* Los campos se editan en la misma celda: sin borde hasta que el raton
+           pasa por encima, para que la tabla se lea como tabla y no como
+           formulario. */
+        .trans-inp {
+            width: 100%;
+            padding: 8px 11px;
+            border-radius: var(--r-sm);
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--ink);
+            font-family: var(--font); font-size: 13.5px;
+            transition: border-color .15s, background .15s;
+        }
+        .trans-inp::placeholder { color: var(--ink-muted); }
+        .trans-inp:hover { border-color: var(--line); }
+        .trans-inp:focus {
+            outline: none;
+            border-color: var(--kos-blue);
+            background: var(--surface);
+            box-shadow: 0 0 0 3px rgba(0,159,227,.12);
+        }
+        .trans-inp.guardado { border-color: var(--kos-blue); }
+        .trans-inp.error { border-color: var(--kos-orange-deep); }
+        .trans-inp.url { font-family: var(--mono); font-size: 12.5px; }
+        table.trans td.col-nombre { width: 30%; }
+        .trans-inp.nombre { font-weight: 500; }
+
+        .trans-acciones { display: flex; gap: 6px; justify-content: flex-end; }
+        .trans-mini {
+            width: 32px; height: 32px;
+            display: grid; place-items: center;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: var(--surface);
+            color: var(--ink-soft);
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: color .15s, border-color .15s, background .15s, opacity .15s;
+        }
+        .trans-mini svg { width: 15px; height: 15px; }
+        .trans-mini:hover:not(:disabled) {
+            color: var(--kos-blue-deep);
+            border-color: var(--kos-blue-soft);
+            background: rgba(0,159,227,.07);
+        }
+        .trans-mini:disabled { opacity: .35; cursor: not-allowed; }
+        .trans-mini.borrar:hover:not(:disabled) {
+            color: var(--kos-orange-deep);
+            border-color: var(--kos-orange);
+            background: rgba(242,140,48,.09);
+        }
+
+        /* Fila de alta: se distingue de las guardadas para que no parezca una
+           transportadora que ya existe. */
+        tr.trans-nueva td { background: color-mix(in srgb, var(--kos-blue) 7%, transparent); }
+        tr.trans-nueva:hover td { background: color-mix(in srgb, var(--kos-blue) 10%, transparent); }
+
+        .trans-nota {
+            margin-top: 18px;
+            font-size: 12.5px; line-height: 1.65;
+            color: var(--ink-muted);
+            max-width: 700px;
+        }
+        .trans-nota code {
+            font-family: var(--mono); font-size: 11.5px;
+            padding: 1px 5px;
+            border-radius: 5px;
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            color: var(--ink-soft);
+        }
+
         .contact-note {
             margin-top: 22px;
             font-size: 12.5px; line-height: 1.6;
@@ -1348,6 +1435,16 @@
             <path d="M3.5 7.2 12 11.5l8.5-4.3M12 11.5V21"/>
         </svg>
         <span class="rail-tip">Pedidos</span>
+    </button>
+
+    <button class="rail-btn" data-view="transportadoras" onclick="switchView(this)" aria-label="Transportadoras">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.8 6h11.4v10H1.8z"/>
+            <path d="M13.2 10h3.5l3.5 3.4V16h-7z"/>
+            <circle cx="6.6" cy="18" r="1.9"/>
+            <circle cx="16.6" cy="18" r="1.9"/>
+        </svg>
+        <span class="rail-tip">Transportadoras</span>
     </button>
 
     <button class="rail-btn" data-view="contacts" onclick="switchView(this)" aria-label="Contactos">
@@ -1509,6 +1606,8 @@
     <div class="contact-panel scroll" id="contactPanel"></div>
 
     <div class="pedidos-panel scroll" id="pedidosPanel"></div>
+
+    <div class="trans-panel scroll" id="transPanel"></div>
 
     <button class="jump-btn" id="jumpBtn" onclick="scrollToLatest()"
             title="Ir a lo más reciente" aria-label="Ir a lo más reciente">
@@ -2550,6 +2649,320 @@ async function notificarPedido(id, btn) {
 }
 
 /* ======================================================================
+   TRANSPORTADORAS
+   Directorio que llena el asesor: nombre y pagina de rastreo. Detras no hay
+   ninguna API — a diferencia de los pedidos, aqui todo se crea, se edita y
+   se borra a mano. Vive en SQL Server, al lado de kx.pedidos.
+   ====================================================================== */
+let transList = null;
+let transQuery = '';
+// Filas de alta todavia sin guardar. Viven solo en memoria y se identifican
+// con `tmp`, un correlativo del navegador que no choca con los id de SQL.
+let transNuevas = [];
+let transSeq = 0;
+
+// Guia de mentira para el boton de abrir: sirve para comprobar que la URL
+// lleva a alguna parte, no para rastrear nada.
+const GUIA_EJEMPLO = '123456789';
+
+const ICONO_ABRIR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h5.5V10"/><path d="M19.5 4.5 11 13"/>
+    <path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>`;
+const ICONO_BORRAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16"/>
+    <path d="M9.5 6.5V4.9A1.4 1.4 0 0 1 10.9 3.5h2.2a1.4 1.4 0 0 1 1.4 1.4v1.6"/>
+    <path d="M6.6 6.5 7.5 19a1.6 1.6 0 0 0 1.6 1.5h5.8a1.6 1.6 0 0 0 1.6-1.5l.9-12.5"/></svg>`;
+const ICONO_EQUIS = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+    stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>`;
+
+function transFiltradas() {
+    const q = transQuery.trim().toLowerCase();
+    if (!q) return transList || [];
+    return (transList || []).filter(t =>
+        [t.nombre, t.urlRastreo].some(v => v && String(v).toLowerCase().includes(q)));
+}
+
+// Mismo convenio que TCC_RASTREO_URL en el servidor: si la URL trae {guia} se
+// sustituye. NO se le pega el numero al final cuando falta el marcador, como
+// hace urlRastreo() en server.js: alli el destinatario es el cliente y una URL
+// aproximada es mejor que ninguna; aqui el asesor solo quiere ver la pagina.
+function urlConGuia(url, guia) {
+    if (!url) return '';
+    return url.includes('{guia}') ? url.replace('{guia}', encodeURIComponent(guia)) : url;
+}
+
+function filaTransportadora(t) {
+    return `
+        <tr data-trans="${t.id}">
+            <td class="col-nombre">
+                <input class="trans-inp nombre" type="text" maxlength="120" placeholder="Nombre"
+                       value="${escapeAttr(t.nombre)}"
+                       onchange="guardarTransportadora(${t.id}, 'nombre', this)"
+                       onkeydown="if(event.key==='Enter')this.blur()">
+            </td>
+            <td>
+                <input class="trans-inp url" type="text" maxlength="500" placeholder="https://…/rastreo?guia={guia}"
+                       value="${escapeAttr(t.urlRastreo)}"
+                       onchange="guardarTransportadora(${t.id}, 'urlRastreo', this)"
+                       onkeydown="if(event.key==='Enter')this.blur()">
+            </td>
+            <td>
+                <div class="trans-acciones">
+                    <button class="trans-mini" title="Abrir la página de rastreo"
+                            onclick="abrirRastreo(${t.id})">${ICONO_ABRIR}</button>
+                    <button class="trans-mini borrar" title="Eliminar del directorio"
+                            onclick="eliminarTransportadora(${t.id})">${ICONO_BORRAR}</button>
+                </div>
+            </td>
+        </tr>`;
+}
+
+function filaNuevaTransportadora(n) {
+    return `
+        <tr class="trans-nueva" data-nueva="${n.tmp}">
+            <td class="col-nombre">
+                <input class="trans-inp nombre" type="text" maxlength="120" placeholder="Nombre de la transportadora"
+                       value="${escapeAttr(n.nombre)}" onkeydown="if(event.key==='Enter')guardarNueva(${n.tmp})">
+            </td>
+            <td>
+                <input class="trans-inp url" type="text" maxlength="500" placeholder="https://…/rastreo?guia={guia}"
+                       value="${escapeAttr(n.urlRastreo)}" onkeydown="if(event.key==='Enter')guardarNueva(${n.tmp})">
+            </td>
+            <td>
+                <div class="trans-acciones">
+                    <button class="trans-mini" title="Guardar" onclick="guardarNueva(${n.tmp})">${ICONO_CHECK}</button>
+                    <button class="trans-mini borrar" title="Descartar" onclick="descartarNueva(${n.tmp})">${ICONO_EQUIS}</button>
+                </div>
+            </td>
+        </tr>`;
+}
+
+// Lo que se lleva escrito en una fila de alta solo existe en el DOM. Antes de
+// repintar hay que devolverlo al arreglo, o buscar algo en la tabla borraria
+// una transportadora a medio escribir.
+function sincronizarNuevas() {
+    transNuevas.forEach(n => {
+        const fila = document.querySelector(`tr[data-nueva="${n.tmp}"]`);
+        if (!fila) return;
+        n.nombre = fila.querySelector('.trans-inp.nombre').value;
+        n.urlRastreo = fila.querySelector('.trans-inp.url').value;
+    });
+}
+
+function cuerpoTransportadoras() {
+    const filas = transFiltradas().map(filaTransportadora).join('') +
+                  transNuevas.map(filaNuevaTransportadora).join('');
+    // Las filas de alta se muestran siempre, con filtro o sin el: esconder una
+    // que se esta escribiendo seria perder lo escrito.
+    if (filas) return filas;
+    return `<tr class="ped-sinres"><td colspan="3">Ninguna transportadora coincide con “${escapeHtml(transQuery)}”</td></tr>`;
+}
+
+// Al teclear se repinta SOLO el cuerpo: repintar el panel entero destruiria el
+// buscador y se perderia el foco en cada letra.
+function filtrarTransportadoras(v) {
+    sincronizarNuevas();
+    transQuery = v;
+    const tbody = document.querySelector('#transPanel table.trans tbody');
+    if (!tbody) return;
+    tbody.innerHTML = cuerpoTransportadoras();
+    const cont = document.getElementById('transCount');
+    if (cont) {
+        cont.textContent = transQuery.trim()
+            ? transFiltradas().length + ' de ' + (transList || []).length : '';
+    }
+}
+
+async function renderTransportadoras(opts = {}) {
+    const panel = document.getElementById('transPanel');
+    // Aqui tambien, y no solo en el buscador: el refresco automatico de cada 5
+    // minutos entra por renderCurrentView() y repintaria encima de una fila de
+    // alta a medio escribir.
+    sincronizarNuevas();
+
+    if (!transList) {
+        panel.innerHTML = '<div class="ped-vacio"><div class="spinner"></div><p>Cargando transportadoras…</p></div>';
+        try {
+            const d = await fetchAPI('transportadoras');
+            if (!Array.isArray(d)) throw new Error((d && d.error) || 'respuesta inesperada del servidor');
+            transList = d;
+        } catch (err) {
+            panel.innerHTML = `<div class="ped-vacio"><p>No se pudieron cargar las transportadoras.<br>
+                <b>${escapeHtml(err.message)}</b></p></div>`;
+            return;
+        }
+        if (currentView !== 'transportadoras') return;   // cambiaron de vista mientras cargaba
+    }
+
+    const visibles = transFiltradas();
+    const vacio = !transList.length && !transNuevas.length;
+
+    panel.innerHTML = `
+        <div class="ped-head">
+            <div>
+                <h2>Transportadoras</h2>
+                <div class="sub">
+                    ${transList.length} ${transList.length === 1 ? 'transportadora' : 'transportadoras'}
+                    con página de rastreo
+                </div>
+            </div>
+            <div class="ped-actions">
+                <div class="ped-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+                    </svg>
+                    <input type="text" id="transSearch" autocomplete="off"
+                           placeholder="Buscar transportadora"
+                           value="${escapeAttr(transQuery)}"
+                           oninput="filtrarTransportadoras(this.value)">
+                    <span class="ped-count" id="transCount">${transQuery.trim()
+                        ? visibles.length + ' de ' + transList.length : ''}</span>
+                </div>
+                <button class="btn primary" onclick="agregarTransportadora()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>
+                    Agregar transportadora
+                </button>
+            </div>
+        </div>
+
+        <div class="ped-wrap">
+            ${vacio ? `<div class="ped-vacio"><p>Todavía no hay transportadoras.<br>
+                Usa «Agregar transportadora» para crear la primera.</p></div>` : `
+            <div class="ped-scroll">
+                <table class="ped trans">
+                    <thead>
+                        <tr>
+                            <th class="col-nombre">Transportadora</th>
+                            <th>URL de rastreo</th>
+                            <th class="col-acciones">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>${cuerpoTransportadoras()}</tbody>
+                </table>
+            </div>`}
+        </div>
+
+        <p class="trans-nota">
+            Escribe la URL con <code>{guia}</code> donde va el número de guía — por ejemplo
+            <code>https://www.tcc.com/rastreo?guia={guia}</code>. Es el mismo convenio que usa el
+            aviso de despacho, así que el día que un pedido salga por otra transportadora la URL
+            ya queda lista. Si la página no recibe la guía por la URL, déjala sin el marcador y
+            se abrirá tal cual.
+        </p>`;
+}
+
+function agregarTransportadora() {
+    sincronizarNuevas();
+    const tmp = ++transSeq;
+    transNuevas.push({ tmp, nombre: '', urlRastreo: '' });
+    renderTransportadoras().then(() => {
+        // La fila se agrega para escribir en ella: el foco va al nombre.
+        const inp = document.querySelector(`tr[data-nueva="${tmp}"] .trans-inp.nombre`);
+        if (inp) inp.focus();
+    });
+}
+
+async function postTransportadora(cuerpo) {
+    const r = await fetch('/api/transportadoras/guardar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+    return d;
+}
+
+async function guardarNueva(tmp) {
+    sincronizarNuevas();
+    const n = transNuevas.find(x => x.tmp === tmp);
+    if (!n) return;
+
+    const nombre = (n.nombre || '').trim();
+    const urlRastreo = (n.urlRastreo || '').trim();
+    if (!nombre || !urlRastreo) {
+        showToast('Escribe el nombre y la URL de rastreo');
+        return;
+    }
+
+    try {
+        const d = await postTransportadora({ nombre, urlRastreo });
+        transList.push(d.transportadora);
+        // Mismo orden que trae el servidor, para que no salte de sitio al recargar.
+        transList.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+        transNuevas = transNuevas.filter(x => x.tmp !== tmp);
+        await renderTransportadoras();
+        showToast(d.transportadora.nombre + ' agregada');
+    } catch (err) {
+        showToast('No se pudo agregar: ' + err.message);
+    }
+}
+
+function descartarNueva(tmp) {
+    sincronizarNuevas();
+    const n = transNuevas.find(x => x.tmp === tmp);
+    // Solo se pregunta si hay algo escrito que perder.
+    if (n && (n.nombre.trim() || n.urlRastreo.trim()) &&
+        !confirm('¿Descartar esta transportadora sin guardar?')) return;
+    transNuevas = transNuevas.filter(x => x.tmp !== tmp);
+    renderTransportadoras();
+}
+
+async function guardarTransportadora(id, campo, el) {
+    const t = (transList || []).find(x => x.id === id);
+    const valor = el.value.trim();
+    if (t && (t[campo] || '') === valor) return;   // no cambió nada
+
+    try {
+        const d = await postTransportadora({ id, [campo]: valor });
+        if (t) Object.assign(t, d.transportadora);
+        // Se muestra lo que quedó en la base, no lo que se tecleó.
+        el.value = d.transportadora[campo] || '';
+        el.classList.add('guardado');
+        setTimeout(() => el.classList.remove('guardado'), 1200);
+    } catch (err) {
+        // Se devuelve a lo último guardado: dejar en pantalla un valor que la
+        // base rechazó haría creer que quedó puesto.
+        if (t) el.value = t[campo] || '';
+        el.classList.add('error');
+        setTimeout(() => el.classList.remove('error'), 1600);
+        showToast('No se pudo guardar: ' + err.message);
+    }
+}
+
+// Abre lo que está GUARDADO, no lo que hay en el input: así el botón comprueba
+// la URL que de verdad quedó en la base.
+function abrirRastreo(id) {
+    const t = (transList || []).find(x => x.id === id);
+    if (!t || !t.urlRastreo) return;
+    window.open(urlConGuia(t.urlRastreo, GUIA_EJEMPLO), '_blank', 'noopener');
+}
+
+async function eliminarTransportadora(id) {
+    const t = (transList || []).find(x => x.id === id);
+    if (!t) return;
+    if (!confirm('¿Eliminar “' + t.nombre + '” del directorio?')) return;
+
+    try {
+        const r = await fetch('/api/transportadoras/eliminar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        transList = transList.filter(x => x.id !== id);
+        sincronizarNuevas();
+        await renderTransportadoras();
+        showToast(t.nombre + ' eliminada');
+    } catch (err) {
+        showToast('No se pudo eliminar: ' + err.message);
+    }
+}
+
+/* ======================================================================
    AGENDA DE CONTACTOS
    ====================================================================== */
 async function loadContactsAgenda() {
@@ -3065,7 +3478,7 @@ function setRailActive(el) {
 
 function closeDetail() {
     const area = document.getElementById('chatArea');
-    area.classList.remove('has-chat', 'has-contact', 'has-pedidos', 'manual', 'ventana-cerrada');
+    area.classList.remove('has-chat', 'has-contact', 'has-pedidos', 'has-trans', 'manual', 'ventana-cerrada');
     document.body.classList.remove('viewing-chat');
     currentMode = 'auto';
     currentPhone = null;
@@ -3089,11 +3502,18 @@ function renderCurrentView(opts = {}) {
     const archBar = document.getElementById('archivedFilterBar');
     if (archBar) archBar.style.display = currentView === 'archived' ? '' : 'none';
 
-    // Pedidos es una tabla ancha: ocupa todo el ancho y no usa el panel izquierdo.
+    // Pedidos y Transportadoras son tablas anchas: ocupan todo el ancho y no
+    // usan el panel izquierdo.
     document.body.classList.toggle('view-pedidos', currentView === 'pedidos');
+    document.body.classList.toggle('view-trans', currentView === 'transportadoras');
     if (currentView === 'pedidos') {
         document.getElementById('chatArea').classList.add('has-pedidos');
         renderPedidos(opts);
+        return;
+    }
+    if (currentView === 'transportadoras') {
+        document.getElementById('chatArea').classList.add('has-trans');
+        renderTransportadoras(opts);
         return;
     }
 
@@ -3137,9 +3557,10 @@ function switchView(el) {
     closeDetail();
     document.getElementById('searchInput').value = '';
 
-    // Pedidos y la agenda tienen su propia fuente de datos; las otras vistas
-    // necesitan las conversaciones cargadas.
-    const necesitaChats = currentView !== 'contacts' && currentView !== 'pedidos';
+    // Pedidos, transportadoras y la agenda tienen su propia fuente de datos;
+    // las otras vistas necesitan las conversaciones cargadas.
+    const necesitaChats = currentView !== 'contacts' && currentView !== 'pedidos'
+                       && currentView !== 'transportadoras';
     if (necesitaChats && !sessionsByCol[currentCollection]) loadSessions();
     else renderCurrentView();
 }
@@ -3148,7 +3569,8 @@ function handleSearch(q) {
     clearTimeout(searchTimeout);
     // La agenda y los archivados ya estan en memoria: se filtran sin ir al
     // servidor, asi el resultado es inmediato.
-    if (currentView === 'pedidos') return;          // no usa el buscador
+    // Estas dos traen su propio buscador dentro de la tabla.
+    if (currentView === 'pedidos' || currentView === 'transportadoras') return;
     if (currentView === 'contacts') return renderContacts();
     if (currentView === 'archived') return renderArchived();
 
@@ -3276,6 +3698,7 @@ function reloadAll() {
     // Los pedidos se releen de SQL, pero NO se sincroniza con Siesa: eso es
     // una accion explicita, con su propio boton.
     pedidosList = null;
+    transList = null;
     refreshSessions({ force: true });
     startAutoRefresh();   // reinicia la cuenta de los 5 minutos
 }
