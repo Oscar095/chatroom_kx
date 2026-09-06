@@ -10,7 +10,7 @@
 const sql = require('mssql');
 const { conectar } = require('./pedidos');
 
-const COLUMNAS = 'id, nombre, url_rastreo, creado_en, actualizado_en';
+const COLUMNAS = 'id, nombre, url_rastreo, creado_en, actualizado_en, usuario';
 // Para los OUTPUT: devolver la fila ya guardada evita que el panel muestre lo
 // que el asesor tecleo en vez de lo que quedo en la base.
 const INSERTADAS = COLUMNAS.split(',').map(c => 'INSERTED.' + c.trim()).join(', ');
@@ -21,7 +21,9 @@ function fila(f) {
         nombre: f.nombre,
         urlRastreo: f.url_rastreo,
         creadoEn: f.creado_en,
-        actualizadoEn: f.actualizado_en
+        actualizadoEn: f.actualizado_en,
+        // Quien la dejo asi. Es null en las filas creadas antes del login.
+        usuario: f.usuario || null
     };
 }
 
@@ -55,26 +57,30 @@ async function listar() {
     return r.recordset.map(fila);
 }
 
-async function crear({ nombre, urlRastreo }) {
+async function crear({ nombre, urlRastreo }, usuario = null) {
     const cx = await conectar();
     const req = cx.request();
     req.input('nombre', sql.NVarChar(120), nombre);
     req.input('url', sql.NVarChar(500), urlRastreo);
+    // Quien escribe va como parametro aparte de los campos editables, igual que
+    // en pedidos.actualizar(): no es un dato que el panel pueda mandar.
+    req.input('usuario', sql.NVarChar(60), usuario || null);
     const r = await req.query(`
-        INSERT INTO kx.transportadoras (nombre, url_rastreo)
+        INSERT INTO kx.transportadoras (nombre, url_rastreo, usuario)
         OUTPUT ${INSERTADAS}
-        VALUES (@nombre, @url);`);
+        VALUES (@nombre, @url, @usuario);`);
     return fila(r.recordset[0]);
 }
 
 // Los dos campos son opcionales por separado: se actualiza solo lo que venga,
 // igual que en pedidos.actualizar().
-async function actualizar(id, { nombre, urlRastreo }) {
+async function actualizar(id, { nombre, urlRastreo }, usuario = null) {
     const cx = await conectar();
     const req = cx.request();
     req.input('id', sql.Int, id);
+    req.input('usuario', sql.NVarChar(60), usuario || null);
 
-    const sets = ['actualizado_en = SYSDATETIME()'];
+    const sets = ['actualizado_en = SYSDATETIME()', 'usuario = COALESCE(@usuario, usuario)'];
     if (nombre !== undefined) {
         req.input('nombre', sql.NVarChar(120), nombre);
         sets.push('nombre = @nombre');

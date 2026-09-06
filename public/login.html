@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#00203f">
+    <title>KosXpress · Entrar al ChatRoom</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ------------------------------------------------------------------
+           La puerta del panel. Es una pagina aparte y no un modal dentro de
+           index.html a proposito: index.html no se sirve sin sesion (ver la
+           guarda en server.js), asi que el panel nunca llega al navegador de
+           quien no ha entrado — ni su HTML, ni sus nombres de cliente.
+
+           Misma paleta que el panel, pero al reves: aqui el casco navy es todo
+           el fondo y la tarjeta es el unico lienzo claro.
+           ------------------------------------------------------------------ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --kos-blue:        #009FE3;
+            --kos-blue-deep:   #007FB6;
+            --kos-orange:      #F28C30;
+            --kos-orange-deep: #E56D0D;
+            --navy:            #00182f;
+            --surface:         #ffffff;
+            --surface-2:       #f7fafd;
+            --ink:             #12283c;
+            --ink-soft:        #46617a;
+            --ink-muted:       #7d93a8;
+            --line:            #e0eaf3;
+            --r-md: 12px;
+            --r-lg: 16px;
+            --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: var(--font);
+            color: var(--ink);
+            background: var(--navy);
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            /* Dos halos de marca sobre el navy: el azul arriba a la izquierda,
+               el naranja abajo a la derecha, como en el rail del panel. */
+            background-image:
+                radial-gradient(900px 600px at 12% -10%, rgba(0,159,227,.30), transparent 60%),
+                radial-gradient(800px 500px at 88% 110%, rgba(242,140,48,.22), transparent 60%);
+        }
+
+        .caja {
+            width: 100%;
+            max-width: 400px;
+            background: var(--surface);
+            border-radius: 22px;
+            padding: 34px 32px 28px;
+            box-shadow: 0 24px 60px rgba(0,10,25,.45);
+        }
+
+        .marca {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 26px;
+        }
+        .marca img {
+            width: 46px; height: 46px;
+            border-radius: 13px;
+            object-fit: cover;
+            box-shadow: 0 2px 10px rgba(16,42,67,.18);
+        }
+        .marca .txt { line-height: 1.25; }
+        .marca .t1 {
+            font-size: 18px; font-weight: 600; letter-spacing: -.2px;
+        }
+        .marca .t1 em { font-style: normal; color: var(--kos-blue); }
+        .marca .t2 { font-size: 12.5px; color: var(--ink-muted); }
+
+        h1 {
+            font-size: 20px; font-weight: 600;
+            letter-spacing: -.3px;
+            margin-bottom: 6px;
+        }
+        .sub {
+            font-size: 13.5px; line-height: 1.55;
+            color: var(--ink-soft);
+            margin-bottom: 22px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .5px;
+            color: var(--ink-muted);
+            margin-bottom: 6px;
+        }
+        .campo { margin-bottom: 16px; }
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            background: var(--surface-2);
+            font-family: var(--font); font-size: 15px;
+            color: var(--ink);
+            transition: border-color .15s, box-shadow .15s, background .15s;
+        }
+        input::placeholder { color: var(--ink-muted); }
+        input:focus {
+            outline: none;
+            background: var(--surface);
+            border-color: var(--kos-blue);
+            box-shadow: 0 0 0 3px rgba(0,159,227,.14);
+        }
+        input:disabled { opacity: .6; }
+
+        .btn {
+            width: 100%;
+            padding: 13px 16px;
+            border: 0;
+            border-radius: var(--r-md);
+            background: linear-gradient(140deg, #009FE3 0%, #007FB6 100%);
+            color: #fff;
+            font-family: var(--font); font-size: 15px; font-weight: 600;
+            cursor: pointer;
+            transition: filter .15s, transform .15s, opacity .15s;
+        }
+        .btn:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+        .btn:disabled { opacity: .6; cursor: default; transform: none; }
+
+        /* El aviso ocupa su sitio solo cuando dice algo: reservarlo siempre
+           dejaria un hueco raro bajo el boton. */
+        .aviso {
+            margin-top: 16px;
+            padding: 11px 13px;
+            border-radius: var(--r-md);
+            font-size: 13px; line-height: 1.5;
+            border: 1px solid var(--kos-orange);
+            background: rgba(242,140,48,.10);
+            color: var(--kos-orange-deep);
+        }
+        .aviso:empty { display: none; }
+        .aviso.info {
+            border-color: rgba(0,159,227,.5);
+            background: rgba(0,159,227,.09);
+            color: var(--kos-blue-deep);
+        }
+
+        .pie {
+            margin-top: 22px;
+            padding-top: 16px;
+            border-top: 1px solid var(--line);
+            font-size: 12.5px; line-height: 1.6;
+            color: var(--ink-muted);
+        }
+        .pie b { color: var(--ink-soft); font-weight: 600; }
+        .pie a {
+            color: var(--kos-blue-deep);
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .pie a:hover { text-decoration: underline; }
+
+        .oculto { display: none !important; }
+
+        @media (max-width: 420px) {
+            .caja { padding: 26px 22px 22px; border-radius: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<main class="caja">
+    <div class="marca">
+        <img src="logo-kosxpress.jpg" alt="KosXpress">
+        <div class="txt">
+            <div class="t1">Chat<em>Room</em></div>
+            <div class="t2">KosXpress · KOS Colombia</div>
+        </div>
+    </div>
+
+    <!-- ---------- Entrar ---------- -->
+    <form id="formEntrar" autocomplete="on">
+        <h1>Entrar</h1>
+        <p class="sub">Usa el usuario que te dieron. Si es tu primera vez, la contraseña es temporal y el panel te va a pedir una nueva.</p>
+
+        <div class="campo">
+            <label for="usuario">Usuario</label>
+            <input type="text" id="usuario" name="username" autocomplete="username"
+                   placeholder="dianan" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        </div>
+        <div class="campo">
+            <label for="clave">Contraseña</label>
+            <input type="password" id="clave" name="password" autocomplete="current-password"
+                   placeholder="••••••••" required>
+        </div>
+
+        <button class="btn" type="submit" id="btnEntrar">Entrar</button>
+        <div class="aviso" id="avisoEntrar"></div>
+    </form>
+
+    <!-- ---------- Cambiar la clave temporal ---------- -->
+    <form id="formClave" class="oculto" autocomplete="on">
+        <h1>Cambia tu contraseña</h1>
+        <p class="sub" id="subClave">Estás usando la contraseña temporal. Elige una propia para poder entrar al panel.</p>
+
+        <div class="campo oculto" id="campoActual">
+            <label for="actual">Contraseña actual</label>
+            <input type="password" id="actual" autocomplete="current-password" placeholder="La que usas hoy">
+        </div>
+        <div class="campo">
+            <label for="nueva">Contraseña nueva</label>
+            <input type="password" id="nueva" autocomplete="new-password"
+                   placeholder="Mínimo 8 caracteres" required>
+        </div>
+        <div class="campo">
+            <label for="repetir">Repítela</label>
+            <input type="password" id="repetir" autocomplete="new-password"
+                   placeholder="Otra vez, para no equivocarnos" required>
+        </div>
+
+        <button class="btn" type="submit" id="btnClave">Guardar y entrar</button>
+        <div class="aviso" id="avisoClave"></div>
+
+        <div class="pie">
+            ¿No eres tú? <a onclick="salir()">Salir de esta sesión</a>
+        </div>
+    </form>
+
+    <div class="pie" id="pieAyuda">
+        ¿Olvidaste tu contraseña? Pídele a quien administra el panel que la reinicie desde
+        <b>Usuarios</b>; vuelve a quedar temporal y la cambias al entrar.
+    </div>
+</main>
+
+<script>
+// La clave que se acaba de teclear al entrar. Se guarda en memoria (nunca en
+// localStorage) solo para no volver a pedirla en el formulario de cambio: la
+// ruta /api/auth/clave exige la actual, y pedirsela de nuevo a quien la
+// escribio hace dos segundos es puro roce.
+let claveConocida = null;
+
+const $ = id => document.getElementById(id);
+
+function mostrarClave(pedirActual) {
+    $('formEntrar').classList.add('oculto');
+    $('pieAyuda').classList.add('oculto');
+    $('formClave').classList.remove('oculto');
+    $('campoActual').classList.toggle('oculto', !pedirActual);
+    if (pedirActual) $('actual').setAttribute('required', 'required');
+    ($('actual').offsetParent ? $('actual') : $('nueva')).focus();
+}
+
+function aviso(el, texto, info) {
+    el.textContent = texto || '';
+    el.classList.toggle('info', !!info);
+}
+
+async function pedir(ruta, cuerpo) {
+    const r = await fetch(ruta, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo || {})
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'El servidor respondió ' + r.status);
+    return d;
+}
+
+/* Al abrir la pagina se pregunta si ya hay sesion. Tres casos:
+     - sesion completa      -> al panel, sin escribir nada
+     - sesion con clave temporal -> directo al cambio, pidiendo la actual
+       (recargar la pagina pierde `claveConocida`, y sin ese campo no habria
+       forma de terminar el cambio)
+     - sin sesion           -> el formulario de entrar, como siempre        */
+fetch('/api/auth/sesion').then(async r => {
+    if (!r.ok) { $('usuario').focus(); return; }
+    const d = await r.json();
+    if (d.usuario && d.usuario.debeCambiar) return mostrarClave(true);
+    location.replace('/');
+}).catch(() => $('usuario').focus());
+
+$('formEntrar').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('btnEntrar');
+    const av = $('avisoEntrar');
+    aviso(av, '');
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+
+    try {
+        const clave = $('clave').value;
+        const d = await pedir('/api/auth/login', { usuario: $('usuario').value, clave });
+        if (d.usuario && d.usuario.debeCambiar) {
+            claveConocida = clave;
+            $('clave').value = '';
+            return mostrarClave(false);
+        }
+        location.replace('/');
+    } catch (err) {
+        aviso(av, err.message);
+        $('clave').select();
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+    }
+});
+
+$('formClave').addEventListener('submit', async e => {
+    e.preventDefault();
+    const av = $('avisoClave');
+    const nueva = $('nueva').value;
+    aviso(av, '');
+
+    // Las dos comprobaciones que se pueden hacer sin ir al servidor se hacen
+    // aqui; el resto de la politica la decide auth.validarClave() y llega como
+    // mensaje de error, para que la regla viva en un solo lado.
+    if (nueva !== $('repetir').value) {
+        return aviso(av, 'Las dos contraseñas no coinciden.');
+    }
+    if (nueva.length < 8) {
+        return aviso(av, 'La contraseña debe tener al menos 8 caracteres.');
+    }
+
+    const btn = $('btnClave');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    try {
+        await pedir('/api/auth/clave', {
+            actual: claveConocida !== null ? claveConocida : $('actual').value,
+            nueva
+        });
+        location.replace('/');
+    } catch (err) {
+        aviso(av, err.message);
+        btn.disabled = false;
+        btn.textContent = 'Guardar y entrar';
+    }
+});
+
+async function salir() {
+    try { await pedir('/api/auth/salir'); } catch {}
+    location.reload();
+}
+</script>
+
+</body>
+</html>

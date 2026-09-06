@@ -41,3 +41,14 @@ BEGIN
         ON kx.transportadoras (nombre);
 END
 GO
+
+-- Quien hizo el ultimo cambio desde el panel, igual que en kx.pedidos:
+-- `actualizado_en` dice cuando y esta columna dice quien. Guarda el usuario del
+-- panel (`dianan`, `oscaro`…), la misma identidad que queda en la coleccion
+-- `auditoria` de Mongo.
+--
+-- Aqui no hay ninguna sincronizacion que pueda pisarla: toda la tabla la
+-- escribe el asesor. Admite NULL por las filas creadas antes del login.
+IF COL_LENGTH('kx.transportadoras', 'usuario') IS NULL
+    ALTER TABLE kx.transportadoras ADD usuario NVARCHAR(60) NULL;
+GO

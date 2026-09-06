@@ -72,3 +72,58 @@ GO
 IF COL_LENGTH('kx.pedidos', 'notificacion_wamid') IS NULL
     ALTER TABLE kx.pedidos ADD notificacion_wamid NVARCHAR(120) NULL;
 GO
+
+-- Etapas de produccion. El pedido pasa por impresion, formacion y bodega antes
+-- de despacharse, y el asesor va marcando cada una desde el panel. Son columnas
+-- del asesor igual que `no_guia` y `despachado`: la sincronizacion NO las toca.
+--
+-- Cada etapa lleva su propio sello de fecha, como `despachado_en`: saber CUANDO
+-- avanzo un pedido es lo que permite ver donde se quedo trabado. El sello se
+-- limpia si el asesor desmarca la casilla, para que no quede una fecha
+-- contando una etapa que ya no esta marcada.
+--
+-- No hay orden obligatorio entre ellas: un pedido puede entrar directo a bodega
+-- sin pasar por impresion, y forzar la secuencia solo dejaria al asesor sin
+-- poder registrar lo que realmente paso.
+IF COL_LENGTH('kx.pedidos', 'impresion') IS NULL
+    ALTER TABLE kx.pedidos ADD impresion BIT NOT NULL CONSTRAINT DF_kx_pedidos_impresion DEFAULT (0);
+GO
+
+IF COL_LENGTH('kx.pedidos', 'impresion_en') IS NULL
+    ALTER TABLE kx.pedidos ADD impresion_en DATETIME2(3) NULL;
+GO
+
+IF COL_LENGTH('kx.pedidos', 'formacion') IS NULL
+    ALTER TABLE kx.pedidos ADD formacion BIT NOT NULL CONSTRAINT DF_kx_pedidos_formacion DEFAULT (0);
+GO
+
+IF COL_LENGTH('kx.pedidos', 'formacion_en') IS NULL
+    ALTER TABLE kx.pedidos ADD formacion_en DATETIME2(3) NULL;
+GO
+
+IF COL_LENGTH('kx.pedidos', 'bodega') IS NULL
+    ALTER TABLE kx.pedidos ADD bodega BIT NOT NULL CONSTRAINT DF_kx_pedidos_bodega DEFAULT (0);
+GO
+
+IF COL_LENGTH('kx.pedidos', 'bodega_en') IS NULL
+    ALTER TABLE kx.pedidos ADD bodega_en DATETIME2(3) NULL;
+GO
+
+-- Quien hizo el ultimo cambio desde el panel. Es la columna que acompaña a
+-- `actualizado_en`: esa dice CUANDO se toco la fila y esta dice QUIEN.
+--
+-- Guarda el usuario del panel (`dianan`, `oscaro`…), no un nombre bonito: es la
+-- identidad con la que se inicia sesion y la misma que queda en la coleccion
+-- `auditoria` de Mongo, para poder cruzar las dos sin adivinar.
+--
+-- Es del asesor, como `no_guia` y las cuatro etapas: la sincronizacion con
+-- Siesa NO la toca. Si el MERGE la pisara, cada sincronizacion borraria el
+-- rastro de quien digito la guia — que es justo lo que esta columna existe
+-- para no perder.
+--
+-- Admite NULL a proposito: las filas anteriores al login no tienen a quien
+-- atribuirles nada, y ponerles un usuario inventado seria peor que dejarlas
+-- vacias.
+IF COL_LENGTH('kx.pedidos', 'usuario') IS NULL
+    ALTER TABLE kx.pedidos ADD usuario NVARCHAR(60) NULL;
+GO
