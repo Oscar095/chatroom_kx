@@ -1030,7 +1030,7 @@ app.get('/api/dashboard', auth.conModulo('dashboard'), async (req, res) => {
         try {
             pedidosResumen = await pedidos.resumen();
         } catch (err) {
-            pedidosError = err.message;
+            pedidosError = errorPedidos(err);
         }
 
         res.json({ ...datos, pedidos: pedidosResumen, pedidosError });
@@ -1038,6 +1038,18 @@ app.get('/api/dashboard', auth.conModulo('dashboard'), async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// "Invalid column name 'bodega'" no le dice nada al asesor que lo ve en la
+// pantalla. Pasa cuando el codigo se despliega antes que la migracion, y la
+// salida es siempre la misma: reiniciar el panel, porque pedidos.js crea las
+// columnas que faltan al abrir la conexion (ver asegurarColumnas).
+function errorPedidos(err) {
+    if (!pedidos.esColumnaFaltante(err)) return err.message;
+    return 'La tabla kx.pedidos esta desactualizada: ' + err.message +
+        ' El panel intenta crear las columnas que faltan al conectarse, asi que ' +
+        'reinicialo; si el error sigue, el usuario de SQL no puede hacer ALTER TABLE ' +
+        'y hay que correr sql/migrar-pedidos.js con uno que si pueda.';
+}
 
 /* --- Pedidos -----------------------------------------------------------
    Lo único del panel que no vive en MongoDB: los pedidos vienen de la API de
@@ -1052,7 +1064,7 @@ app.get('/api/pedidos', auth.conModulo('pedidos'), async (req, res) => {
             incluirDespachados: req.query.sinDespachar !== '1'
         }));
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: errorPedidos(err) });
     }
 });
 
@@ -1063,7 +1075,7 @@ app.post('/api/pedidos/sincronizar', auth.conModulo('pedidos'), async (req, res)
         auditoria.registrar(req, 'pedidos.sincronizar', null, r);
         res.json({ ok: true, ...r });
     } catch (err) {
-        res.status(502).json({ error: err.message });
+        res.status(502).json({ error: errorPedidos(err) });
     }
 });
 
@@ -1117,7 +1129,7 @@ app.post('/api/pedidos/actualizar', auth.conModulo('pedidos'), async (req, res) 
         // realmente quedó guardado y no lo que el asesor tecleó.
         res.json(contacto !== undefined ? { ok: true, contacto: cambio.contacto } : { ok: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: errorPedidos(err) });
     }
 });
 
@@ -1218,7 +1230,7 @@ app.post('/api/pedidos/notificar', auth.conModulo('pedidos'), async (req, res) =
 
         res.json({ ok: true, id: respuesta.id, notificadoEn: new Date().toISOString() });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: errorPedidos(err) });
     }
 });
 

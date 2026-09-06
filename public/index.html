@@ -5843,6 +5843,7 @@ let textoAviso = '';
 let latidoTimer = null;
 let ultimoPulso = null;
 let fallosLatido = 0;
+let sesionCaida = false;
 let avisoSonidoDado = false;
 
 /* --- Sonido ------------------------------------------------------------ */
@@ -6087,7 +6088,8 @@ function pintarCampana() {
 
     const tip = btn.querySelector('.rail-tip');
     if (tip) {
-        tip.textContent = caido ? 'Sin conexión: nadie está vigilando'
+        tip.textContent = sesionCaida ? 'Sesión expirada: vuelve a entrar'
+            : caido ? 'Sin conexión: nadie está vigilando'
             : !avisosOn ? 'Avisos silenciados'
             : sinPermiso ? 'Avisos activos · sin aviso de escritorio'
             : 'Avisos activos';
@@ -6125,8 +6127,18 @@ function alternarAvisos() {
 async function latir() {
     try {
         const d = await fetchAPI('latido');
+        // La sesion caduca y /api/* empieza a responder 401. Es un fallo real
+        // —nadie esta vigilando— pero por una causa que el asesor puede
+        // arreglar en diez segundos, asi que se distingue del corte de red:
+        // rotularlo «sin conexion» lo mandaria a revisar el internet.
+        if (d && d.login) {
+            sesionCaida = true;
+            fallosLatido = 3;
+            pintarCampana();
+            return;
+        }
         if (!d || !d.pulso) throw new Error('respuesta sin pulso');
-        if (fallosLatido) { fallosLatido = 0; pintarCampana(); }
+        if (fallosLatido || sesionCaida) { fallosLatido = 0; sesionCaida = false; pintarCampana(); }
         if (ultimoPulso === null) { ultimoPulso = d.pulso; return; }
         if (d.pulso === ultimoPulso) return;
         ultimoPulso = d.pulso;

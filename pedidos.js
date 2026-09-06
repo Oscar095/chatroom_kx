@@ -28,37 +28,75 @@ function config() {
 async function conectar() {
     if (pool && pool.connected) return pool;
     pool = await new sql.ConnectionPool(config()).connect();
-    await asegurarColumnaUsuario();
+    await asegurarColumnas();
     return pool;
 }
 
-/* La columna `usuario` de las dos tablas, creada al vuelo la primera vez que
-   se abre la conexión.
+/* Las columnas que el codigo da por hechas, creadas al vuelo la primera vez
+   que se abre la conexion.
 
-   Está aquí y no solo en sql/migrar-*.js por la misma razón que la semilla de
-   usuarios está en auth.js: en Azure nadie corre scripts. Sin esto, el día que
-   se despliega el registro de quién hace cada cambio, cada `UPDATE` de la
-   sección Pedidos revienta con "Invalid column name 'usuario'" — o sea que el
-   asesor pierde el trabajo de digitar una guía por una columna que falta.
+   Esta aqui y no solo en sql/migrar-*.js por la misma razon que la semilla de
+   usuarios esta en auth.js: en Azure nadie corre scripts. Sin esto, el dia que
+   se despliega una columna nueva, la seccion Pedidos revienta con "Invalid
+   column name" — o sea que el asesor pierde el trabajo de digitar una guia por
+   una columna que falta. Ya paso con `bodega` y `bodega_en`: el codigo se
+   desplego, la migracion no se corrio, y tanto Pedidos como el Dashboard
+   quedaron mostrando un error de SQL en crudo.
 
-   Es idempotente y de metadatos: `ADD <col> NULL` no reescribe la tabla. Corre
-   una vez por proceso; si falla (por permisos, por ejemplo) se avisa y se
-   sigue, porque quedarse sin conexión sería peor que quedarse sin la columna. */
-let columnaLista = false;
+   Las etapas salen de ETAPAS y no de una lista escrita aqui: agregar una
+   quinta etapa manana no puede volver a romper esto. `despachado` ya existe
+   desde el CREATE TABLE y el COL_LENGTH lo deja pasar sin hacer nada.
 
-async function asegurarColumnaUsuario() {
-    if (columnaLista) return;
+   Es idempotente y de metadatos: `ADD <col> NULL` no reescribe la tabla, y
+   `ADD <col> BIT NOT NULL DEFAULT (0)` tampoco en SQL Server moderno. Corre una
+   vez por proceso; si falla (por permisos, por ejemplo) se avisa y se sigue,
+   porque quedarse sin conexion seria peor que quedarse sin la columna.
+
+   Los nombres de columna se concatenan en el SQL a proposito: son literales del
+   codigo, no vienen de ninguna peticion — el mismo criterio de actualizar().  */
+let columnasListas = false;
+
+async function asegurarColumnas() {
+    if (columnasListas) return;
+
+    // Cada etapa: su bandera y su sello de fecha, con el mismo nombre de
+    // constraint que usa sql/pedidos.sql para que las dos vias dejen la tabla
+    // igual y correr la migracion despues no encuentre nada raro.
+    const etapas = ETAPAS.map(e => `
+        IF COL_LENGTH('kx.pedidos', '${e}') IS NULL
+            ALTER TABLE kx.pedidos ADD ${e} BIT NOT NULL CONSTRAINT DF_kx_pedidos_${e} DEFAULT (0);
+        IF COL_LENGTH('kx.pedidos', '${e}_en') IS NULL
+            ALTER TABLE kx.pedidos ADD ${e}_en DATETIME2(3) NULL;`).join('\n');
+
     try {
         await pool.request().batch(`
-            IF OBJECT_ID('kx.pedidos', 'U') IS NOT NULL AND COL_LENGTH('kx.pedidos', 'usuario') IS NULL
-                ALTER TABLE kx.pedidos ADD usuario NVARCHAR(60) NULL;
+            IF OBJECT_ID('kx.pedidos', 'U') IS NOT NULL
+            BEGIN
+                ${etapas}
+                IF COL_LENGTH('kx.pedidos', 'contacto') IS NULL
+                    ALTER TABLE kx.pedidos ADD contacto NVARCHAR(20) NULL;
+                IF COL_LENGTH('kx.pedidos', 'notificado_en') IS NULL
+                    ALTER TABLE kx.pedidos ADD notificado_en DATETIME2(3) NULL;
+                IF COL_LENGTH('kx.pedidos', 'notificacion_wamid') IS NULL
+                    ALTER TABLE kx.pedidos ADD notificacion_wamid NVARCHAR(120) NULL;
+                IF COL_LENGTH('kx.pedidos', 'usuario') IS NULL
+                    ALTER TABLE kx.pedidos ADD usuario NVARCHAR(60) NULL;
+            END
             IF OBJECT_ID('kx.transportadoras', 'U') IS NOT NULL AND COL_LENGTH('kx.transportadoras', 'usuario') IS NULL
                 ALTER TABLE kx.transportadoras ADD usuario NVARCHAR(60) NULL;`);
-        columnaLista = true;
+        columnasListas = true;
     } catch (err) {
-        console.warn('[pedidos] no se pudo asegurar la columna `usuario`: ' + err.message +
-            '. Corre sql/migrar-pedidos.js y sql/migrar-transportadoras.js.');
+        console.warn('[pedidos] no se pudieron asegurar las columnas: ' + err.message +
+            '. Corre sql/migrar-pedidos.js y sql/migrar-transportadoras.js, o revisa que el ' +
+            'usuario de SQL pueda hacer ALTER TABLE.');
     }
+}
+
+// SQL Server reporta una columna que no existe con el error 207. El mensaje
+// crudo ("Invalid column name 'bodega'") no le dice nada al asesor que lo ve en
+// pantalla, asi que las rutas lo traducen a algo que se pueda accionar.
+function esColumnaFaltante(err) {
+    return !!err && err.number === 207;
 }
 
 async function cerrar() {
@@ -401,5 +439,6 @@ async function resumen() {
 
 module.exports = {
     conectar, cerrar, sincronizar, listar, obtener, actualizar,
-    marcarNotificado, normalizarCelular, traerDeSiesa, ETAPAS, resumen
+    marcarNotificado, normalizarCelular, traerDeSiesa, ETAPAS, resumen,
+    esColumnaFaltante
 };
