@@ -1256,7 +1256,7 @@
             font-size: 13.5px;
             /* Cuatro etapas más los datos del pedido no caben en una pantalla
                angosta; antes que apretar las columnas, la caja hace scroll. */
-            min-width: 1140px;
+            min-width: 1180px;
         }
         table.ped th {
             text-align: left;
@@ -1279,6 +1279,10 @@
         table.ped tbody tr:hover { background: var(--surface-2); }
         table.ped tr.despachado td { color: var(--ink-muted); }
         table.ped tr.despachado .ped-cliente { text-decoration: line-through; }
+        /* Selección: mismo azul de "guardado" pero de fondo, para que se note
+           qué filas están marcadas incluso con la tabla larga y haciendo scroll. */
+        table.ped tr.seleccionado td { background: color-mix(in srgb, var(--kos-blue) 6%, transparent); }
+        table.ped th.th-sel, td.ped-sel { text-align: center; width: 40px; }
         .ped-doc { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
         .ped-cliente { font-weight: 500; }
         .ped-fecha { white-space: nowrap; color: var(--ink-soft); }
@@ -3325,6 +3329,12 @@ let pedidosList = null;
 let pedidosVerTodos = false;
 let pedidosQuery = '';
 
+// Pedidos que el asesor marcó con la casilla de selección, para una acción
+// futura sobre varios a la vez (por ahora, sin ninguna acción todavía —
+// esta es solo la parte de elegirlos). Van los `id` ("TIPO-CONSEC"), no los
+// objetos: así no queda una copia vieja del pedido si se vuelve a sincronizar.
+let pedidosSeleccion = new Set();
+
 // Las etapas, en el orden en que ocurren. `clave` es el nombre de la columna en
 // SQL — tiene que coincidir con ETAPAS en pedidos.js, que es quien arma el
 // UPDATE. El campo con la fecha es siempre `clave + 'En'` (impresionEn,
@@ -3375,9 +3385,26 @@ function celdaEtapa(p, e) {
         </td>`;
 }
 
+function celdaSeleccion(p) {
+    const marcado = pedidosSeleccion.has(p.id);
+    return `
+        <td class="ped-sel">
+            <label class="ped-check" title="${marcado ? 'Quitar de la selección' : 'Seleccionar'}">
+                <input type="checkbox" ${marcado ? 'checked' : ''}
+                       aria-label="Seleccionar pedido"
+                       onchange="alternarSeleccionPedido('${escapeAttr(p.id)}', this)">
+                <span class="caja">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"
+                         stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                </span>
+            </label>
+        </td>`;
+}
+
 function filaPedido(p) {
     return `
-        <tr class="${p.despachado ? 'despachado' : ''}" data-ped="${escapeAttr(p.id)}">
+        <tr class="${p.despachado ? 'despachado' : ''} ${pedidosSeleccion.has(p.id) ? 'seleccionado' : ''}" data-ped="${escapeAttr(p.id)}">
+            ${celdaSeleccion(p)}
             <td class="ped-doc">${escapeHtml(p.idTipoDocto)}-${p.consecDocto}</td>
             <td class="ped-cliente">${escapeHtml(p.nombreCliente || '—')}</td>
             <td class="ped-fecha">${escapeHtml(fechaCorta(p.fechaRegistro))}</td>
@@ -3401,7 +3428,8 @@ function filaPedido(p) {
 
 // Las columnas fijas mas una por etapa. Lo usa el `colspan` del «sin
 // resultados»: escrito a mano, se queda corto en cuanto se agregue una etapa.
-const PED_COLUMNAS = 7 + ETAPAS_PEDIDO.length;
+// El +1 es la columna de selección.
+const PED_COLUMNAS = 8 + ETAPAS_PEDIDO.length;
 
 // Al teclear se repinta SOLO el cuerpo de la tabla: repintar el panel entero
 // destruiria el input y se perderia el foco en cada letra.
@@ -3413,11 +3441,62 @@ function filtrarPedidos(v) {
     tbody.innerHTML = filas.length
         ? filas.map(filaPedido).join('')
         : `<tr class="ped-sinres"><td colspan="${PED_COLUMNAS}">Ningún pedido coincide con “${escapeHtml(v)}”</td></tr>`;
+    actualizarCheckTodos();
     const cont = document.getElementById('pedCount');
     if (cont) {
         cont.textContent = pedidosQuery.trim()
             ? filas.length + ' de ' + (pedidosList || []).length : '';
     }
+}
+
+/* ----------------------------------------------------------------------
+   SELECCIÓN DE PEDIDOS
+   Por ahora esto solo deja marcar pedidos; todavía no dispara ninguna
+   acción (esa es la parte que sigue, para la encuesta de satisfacción).
+   La selección vive en `pedidosSeleccion` y no en el DOM, para que
+   sobreviva a un repintado de la tabla (filtrar, marcar una etapa, etc.).
+   ---------------------------------------------------------------------- */
+
+function alternarSeleccionPedido(id, el) {
+    if (el.checked) pedidosSeleccion.add(id); else pedidosSeleccion.delete(id);
+
+    const fila = document.querySelector(`tr[data-ped="${CSS.escape(id)}"]`);
+    if (fila) fila.classList.toggle('seleccionado', el.checked);
+
+    const label = el.closest('.ped-check');
+    if (label) label.title = el.checked ? 'Quitar de la selección' : 'Seleccionar';
+
+    actualizarCheckTodos();
+}
+
+// Marca o suelta TODOS los pedidos visibles (los que pasan el buscador), no
+// toda la lista: si el asesor filtró por un cliente, "seleccionar todos"
+// tiene que referirse a lo que está viendo, no a pedidos que no ve en pantalla.
+function alternarSeleccionTodos(el) {
+    const visibles = pedidosFiltrados();
+    for (const p of visibles) {
+        if (el.checked) pedidosSeleccion.add(p.id); else pedidosSeleccion.delete(p.id);
+    }
+
+    const tbody = document.querySelector('#pedidosPanel table.ped tbody');
+    if (tbody) {
+        tbody.innerHTML = visibles.length
+            ? visibles.map(filaPedido).join('')
+            : tbody.innerHTML;
+    }
+}
+
+// Refleja en la casilla del encabezado si TODOS los visibles están marcados
+// (checked), NINGUNO (sin marcar) o solo ALGUNOS (indeterminate) — el estado
+// intermedio evita que el asesor crea que ya seleccionó todo cuando en
+// realidad marcó las filas una por una y le falta alguna.
+function actualizarCheckTodos() {
+    const check = document.getElementById('pedSelTodos');
+    if (!check) return;
+    const visibles = pedidosFiltrados();
+    const marcados = visibles.filter(p => pedidosSeleccion.has(p.id)).length;
+    check.checked = visibles.length > 0 && marcados === visibles.length;
+    check.indeterminate = marcados > 0 && marcados < visibles.length;
 }
 
 function fechaCorta(iso) {
@@ -3443,6 +3522,14 @@ async function renderPedidos(opts = {}) {
             const d = await fetchAPI('pedidos', pedidosVerTodos ? { todos: '1' } : {});
             if (!Array.isArray(d)) throw new Error((d && d.error) || 'respuesta inesperada del servidor');
             pedidosList = d;
+            // Una sincronización o un cambio de filtro puede traer una lista
+            // distinta: lo seleccionado que ya no aparece se suelta, para que
+            // la acción futura sobre "los seleccionados" no arrastre un pedido
+            // que el asesor ya no está viendo.
+            const idsVigentes = new Set(pedidosList.map(p => p.id));
+            for (const id of pedidosSeleccion) {
+                if (!idsVigentes.has(id)) pedidosSeleccion.delete(id);
+            }
         } catch (err) {
             panel.innerHTML = `<div class="ped-vacio"><p>No se pudieron cargar los pedidos.<br>
                 <b>${escapeHtml(err.message)}</b></p></div>`;
@@ -3502,6 +3589,17 @@ async function renderPedidos(opts = {}) {
                 <table class="ped">
                     <thead>
                         <tr>
+                            <th class="th-sel">
+                                <label class="ped-check" title="Seleccionar todos los visibles">
+                                    <input type="checkbox" id="pedSelTodos"
+                                           aria-label="Seleccionar todos los pedidos visibles"
+                                           onchange="alternarSeleccionTodos(this)">
+                                    <span class="caja">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"
+                                             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                                    </span>
+                                </label>
+                            </th>
                             <th>Documento</th><th>Cliente</th><th>Registro</th>
                             <th>Entrega</th><th>No. guía</th><th>Contacto</th>
                             ${ETAPAS_PEDIDO.map(e => `<th class="th-etapa">${escapeHtml(e.titulo)}</th>`).join('')}
@@ -3512,6 +3610,8 @@ async function renderPedidos(opts = {}) {
                 </table>
             </div>`}
         </div>`;
+
+    actualizarCheckTodos();
 
     // Ya esta pintado lo que hay en SQL; recien ahora se va a Siesa, para que
     // abrir la seccion no dependa de una API externa.
