@@ -127,3 +127,24 @@ GO
 IF COL_LENGTH('kx.pedidos', 'usuario') IS NULL
     ALTER TABLE kx.pedidos ADD usuario NVARCHAR(60) NULL;
 GO
+
+-- Quinta etapa: el cliente ya recibio el pedido. Se guarda igual que las
+-- demas (bandera + sello) y es la que habilita la encuesta de satisfaccion.
+IF COL_LENGTH('kx.pedidos', 'recibido') IS NULL
+    ALTER TABLE kx.pedidos ADD recibido BIT NOT NULL CONSTRAINT DF_kx_pedidos_recibido DEFAULT (0);
+GO
+
+IF COL_LENGTH('kx.pedidos', 'recibido_en') IS NULL
+    ALTER TABLE kx.pedidos ADD recibido_en DATETIME2(3) NULL;
+GO
+
+-- Encuesta de satisfaccion: se envia cuando el pedido esta marcado como
+-- recibido. Va separada de notificado_en/notificacion_wamid porque esas dos
+-- son del aviso de despacho, un envio distinto con su propia plantilla.
+IF COL_LENGTH('kx.pedidos', 'encuesta_enviada_en') IS NULL
+    ALTER TABLE kx.pedidos ADD encuesta_enviada_en DATETIME2(3) NULL;
+GO
+
+IF COL_LENGTH('kx.pedidos', 'encuesta_wamid') IS NULL
+    ALTER TABLE kx.pedidos ADD encuesta_wamid NVARCHAR(120) NULL;
+GO

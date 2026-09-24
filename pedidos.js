@@ -81,6 +81,10 @@ async function asegurarColumnas() {
                     ALTER TABLE kx.pedidos ADD notificacion_wamid NVARCHAR(120) NULL;
                 IF COL_LENGTH('kx.pedidos', 'usuario') IS NULL
                     ALTER TABLE kx.pedidos ADD usuario NVARCHAR(60) NULL;
+                IF COL_LENGTH('kx.pedidos', 'encuesta_enviada_en') IS NULL
+                    ALTER TABLE kx.pedidos ADD encuesta_enviada_en DATETIME2(3) NULL;
+                IF COL_LENGTH('kx.pedidos', 'encuesta_wamid') IS NULL
+                    ALTER TABLE kx.pedidos ADD encuesta_wamid NVARCHAR(120) NULL;
             END
             IF OBJECT_ID('kx.transportadoras', 'U') IS NOT NULL AND COL_LENGTH('kx.transportadoras', 'usuario') IS NULL
                 ALTER TABLE kx.transportadoras ADD usuario NVARCHAR(60) NULL;`);
@@ -245,16 +249,19 @@ const COLUMNAS = `id_tipo_docto, consec_docto, fecha_registro, nombre_cliente,
                   fecha_entrega, no_guia, despachado, despachado_en, pendiente,
                   sincronizado_en, contacto, notificado_en, notificacion_wamid,
                   impresion, impresion_en, formacion, formacion_en, bodega, bodega_en,
-                  usuario`;
+                  usuario, recibido, recibido_en, encuesta_enviada_en, encuesta_wamid`;
 
-// Las etapas por las que pasa un pedido, en el orden en que ocurren. Las cuatro
+// Las etapas por las que pasa un pedido, en el orden en que ocurren. Todas
 // se guardan igual —bandera `x` + sello `x_en`— y ninguna viene de Siesa: las
 // marca el asesor, así que el MERGE de `sincronizar()` no puede tocarlas.
 //
 // La lista es la única fuente del nombre de estas columnas: `actualizar()` arma
 // el UPDATE desde aquí y el panel pinta una casilla por cada una. Agregar una
 // etapa nueva es agregarla aquí, en el DDL y en la tabla del panel.
-const ETAPAS = ['impresion', 'formacion', 'bodega', 'despachado'];
+//
+// `recibido` es la última: el cliente ya tiene el pedido en la mano, y es la
+// que habilita la encuesta de satisfacción.
+const ETAPAS = ['impresion', 'formacion', 'bodega', 'despachado', 'recibido'];
 
 function fila(f) {
     return {
@@ -273,11 +280,15 @@ function fila(f) {
         bodegaEn: f.bodega_en,
         despachado: !!f.despachado,
         despachadoEn: f.despachado_en,
+        recibido: !!f.recibido,
+        recibidoEn: f.recibido_en,
         pendiente: !!f.pendiente,
         sincronizadoEn: f.sincronizado_en,
         contacto: f.contacto,
         notificadoEn: f.notificado_en,
         notificacionWamid: f.notificacion_wamid,
+        encuestaEnviadaEn: f.encuesta_enviada_en,
+        encuestaWamid: f.encuesta_wamid,
         // Quien dejo la fila asi. Va al panel para que el asesor vea de quien
         // es la guia que esta leyendo sin tener que abrir el registro de
         // cambios. Es null en las filas anteriores al login.
@@ -320,7 +331,28 @@ async function marcarNotificado(idTipoDocto, consecDocto, wamid, usuario = null)
     return r.recordset[0].n > 0;
 }
 
-// Actualiza lo que el asesor puede tocar: las cuatro etapas, la guía y el
+// Sella la encuesta de satisfacción ya entregada a Meta. Va aparte de
+// marcarNotificado() porque es otro envío con otra plantilla: compartir el
+// sello haría que avisar el despacho contara como encuesta enviada. Igual que
+// allá, se llama DESPUÉS de que WhatsApp acepta, nunca antes.
+async function marcarEncuestaEnviada(idTipoDocto, consecDocto, wamid, usuario = null) {
+    const cx = await conectar();
+    const req = cx.request();
+    req.input('tipo', sql.VarChar(10), idTipoDocto);
+    req.input('consec', sql.Int, consecDocto);
+    req.input('wamid', sql.NVarChar(120), wamid || null);
+    req.input('usuario', sql.NVarChar(60), usuario || null);
+    const r = await req.query(`
+        UPDATE kx.pedidos
+           SET encuesta_enviada_en = SYSDATETIME(), encuesta_wamid = @wamid,
+               usuario = COALESCE(@usuario, usuario),
+               actualizado_en = SYSDATETIME()
+         WHERE id_tipo_docto = @tipo AND consec_docto = @consec;
+        SELECT @@ROWCOUNT AS n;`);
+    return r.recordset[0].n > 0;
+}
+
+// Actualiza lo que el asesor puede tocar: las etapas, la guía y el
 // contacto. Todos los campos son opcionales por separado, así que marcar una
 // casilla no pisa lo que otro asesor acabe de escribir en la misma fila.
 async function actualizar(idTipoDocto, consecDocto, cambios = {}, usuario = null) {
@@ -356,8 +388,10 @@ async function actualizar(idTipoDocto, consecDocto, cambios = {}, usuario = null
         sets.push('contacto = @contacto');
         // Cambiar de destinatario invalida el aviso anterior: el que lo recibió
         // no era este. Si no se limpiara, el panel diría "notificado" y el
-        // contacto nuevo nunca sabría que su pedido salió.
-        sets.push('notificado_en = NULL', 'notificacion_wamid = NULL');
+        // contacto nuevo nunca sabría que su pedido salió. Lo mismo con la
+        // encuesta: el contacto nuevo nunca la recibió.
+        sets.push('notificado_en = NULL', 'notificacion_wamid = NULL',
+            'encuesta_enviada_en = NULL', 'encuesta_wamid = NULL');
     }
 
     const r = await req.query(`
@@ -439,6 +473,6 @@ async function resumen() {
 
 module.exports = {
     conectar, cerrar, sincronizar, listar, obtener, actualizar,
-    marcarNotificado, normalizarCelular, traerDeSiesa, ETAPAS, resumen,
+    marcarNotificado, marcarEncuestaEnviada, normalizarCelular, traerDeSiesa, ETAPAS, resumen,
     esColumnaFaltante
 };

@@ -1256,7 +1256,7 @@
             font-size: 13.5px;
             /* Cuatro etapas más los datos del pedido no caben en una pantalla
                angosta; antes que apretar las columnas, la caja hace scroll. */
-            min-width: 1180px;
+            min-width: 1320px;
         }
         table.ped th {
             text-align: left;
@@ -3322,7 +3322,7 @@ async function sendMessage() {
 /* ======================================================================
    PEDIDOS
    Vienen de la API de Siesa y viven en SQL Server, no en Mongo. Lo que el
-   asesor puede tocar es la guia, el contacto y las cuatro etapas por las que
+   asesor puede tocar es la guia, el contacto y las cinco etapas por las que
    pasa el pedido. La sincronizacion nunca las pisa (ver el MERGE en pedidos.js).
    ====================================================================== */
 let pedidosList = null;
@@ -3348,7 +3348,10 @@ const ETAPAS_PEDIDO = [
     { clave: 'impresion',  titulo: 'Impresión' },
     { clave: 'formacion',  titulo: 'Formación' },
     { clave: 'bodega',     titulo: 'Bodega' },
-    { clave: 'despachado', titulo: 'Despacho' }
+    { clave: 'despachado', titulo: 'Despacho' },
+    // En SQL se llama `recibido`; para el asesor es "Entregado". Marcarla es
+    // lo que habilita el botón de la encuesta de satisfacción.
+    { clave: 'recibido',   titulo: 'Entregado' }
 ];
 
 // Busca por cliente, por documento y por guia. El cliente es lo que se pidio,
@@ -3423,13 +3426,14 @@ function filaPedido(p) {
             </td>
             ${ETAPAS_PEDIDO.map(e => celdaEtapa(p, e)).join('')}
             <td class="ped-aviso-celda">${botonAviso(p)}</td>
+            <td class="ped-encuesta-celda">${botonEncuesta(p)}</td>
         </tr>`;
 }
 
 // Las columnas fijas mas una por etapa. Lo usa el `colspan` del «sin
 // resultados»: escrito a mano, se queda corto en cuanto se agregue una etapa.
-// El +1 es la columna de selección.
-const PED_COLUMNAS = 8 + ETAPAS_PEDIDO.length;
+// Fijas: selección, las seis de datos, el aviso y la encuesta.
+const PED_COLUMNAS = 9 + ETAPAS_PEDIDO.length;
 
 // Al teclear se repinta SOLO el cuerpo de la tabla: repintar el panel entero
 // destruiria el input y se perderia el foco en cada letra.
@@ -3604,6 +3608,7 @@ async function renderPedidos(opts = {}) {
                             <th>Entrega</th><th>No. guía</th><th>Contacto</th>
                             ${ETAPAS_PEDIDO.map(e => `<th class="th-etapa">${escapeHtml(e.titulo)}</th>`).join('')}
                             <th>Aviso al cliente</th>
+                            <th>Encuesta</th>
                         </tr>
                     </thead>
                     <tbody>${filas}</tbody>
@@ -3740,7 +3745,7 @@ async function actualizarPedido(id, cambio) {
     return d;
 }
 
-// Marca o desmarca una de las cuatro etapas. La casilla queda deshabilitada
+// Marca o desmarca una de las etapas. La casilla queda deshabilitada
 // mientras el servidor responde y vuelve atrás si falla: dejarla marcada sin
 // que se haya guardado es peor que no marcarla, porque el asesor la lee como
 // trabajo hecho.
@@ -3837,12 +3842,17 @@ function botonAviso(p) {
             </button>`;
 }
 
-// Repinta solo el botón de una fila. Guía, contacto y despacho deciden los tres
-// si el aviso puede salir, así que cualquiera de ellos lo cambia.
+// Repinta solo los botones de una fila. Guía, contacto y etapas deciden si el
+// aviso y la encuesta pueden salir, así que cualquiera de ellos los cambia.
 function refrescarAviso(id) {
     const p = (pedidosList || []).find(x => x.id === id);
-    const celda = document.querySelector(`tr[data-ped="${CSS.escape(id)}"] .ped-aviso-celda`);
-    if (p && celda) celda.innerHTML = botonAviso(p);
+    if (!p) return;
+    const fila = document.querySelector(`tr[data-ped="${CSS.escape(id)}"]`);
+    if (!fila) return;
+    const aviso = fila.querySelector('.ped-aviso-celda');
+    if (aviso) aviso.innerHTML = botonAviso(p);
+    const encuesta = fila.querySelector('.ped-encuesta-celda');
+    if (encuesta) encuesta.innerHTML = botonEncuesta(p);
 }
 
 async function guardarContacto(id, el) {
@@ -3854,8 +3864,9 @@ async function guardarContacto(id, el) {
         if (p) {
             p.contacto = d.contacto || null;
             // El servidor borra el sello al cambiar de destinatario: quien
-            // recibió el aviso anterior no es este.
+            // recibió el aviso anterior no es este. Igual con la encuesta.
             p.notificadoEn = null;
+            p.encuestaEnviadaEn = null;
         }
         el.value = (p && p.contacto) || '';
         el.classList.remove('error');
@@ -3893,6 +3904,58 @@ async function notificarPedido(id, btn) {
         showToast('Aviso enviado a +' + p.contacto);
     } catch (err) {
         showToast('No se pudo avisar: ' + err.message);
+    }
+    refrescarAviso(id);
+}
+
+/* ----------------------------------------------------------------------
+   ENCUESTA DE SATISFACCIÓN
+   Se habilita cuando el asesor marca «Entregado» y hay celular de contacto.
+   El botón no manda nada por su cuenta: le pide al servidor que dispare el
+   flujo de n8n, que envía la plantilla encuesta_satisfaccion_koski.
+   ---------------------------------------------------------------------- */
+function botonEncuesta(p) {
+    const falta = [];
+    if (!p.recibido) falta.push('marcarlo entregado');
+    if (!p.contacto) falta.push('el celular de contacto');
+
+    const enviada = !!p.encuestaEnviadaEn;
+    const titulo = falta.length ? 'Falta ' + falta.join(' y ')
+        : enviada ? 'Encuesta enviada el ' + formatFullDate(p.encuestaEnviadaEn) + '. Clic para reenviar.'
+        : 'Enviarle la encuesta de satisfacción a +' + p.contacto;
+
+    return `<button class="ped-avisar${enviada ? ' enviado' : ''}"${falta.length ? ' disabled' : ''}
+                    title="${escapeAttr(titulo)}"
+                    onclick="enviarEncuesta('${escapeAttr(p.id)}', this)">
+                ${enviada ? ICONO_CHECK : ICONO_AVION}${enviada ? 'Enviada' : 'Avisar'}
+            </button>`;
+}
+
+async function enviarEncuesta(id, btn) {
+    const p = (pedidosList || []).find(x => x.id === id);
+    if (!p) return;
+
+    // Igual que el aviso: reenviar cuesta otra plantilla y el cliente la
+    // recibiría dos veces.
+    if (p.encuestaEnviadaEn && !confirm(
+        'A este pedido ya se le envió la encuesta el ' + formatFullDate(p.encuestaEnviadaEn) + '.\n\n' +
+        '¿Enviarla otra vez a +' + p.contacto + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Enviando…';
+    try {
+        const r = await fetch('/api/pedidos/encuesta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...partirId(id), reenviar: !!p.encuestaEnviadaEn })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'el servidor respondió ' + r.status);
+
+        p.encuestaEnviadaEn = d.encuestaEnviadaEn || new Date().toISOString();
+        showToast('Encuesta enviada a +' + p.contacto);
+    } catch (err) {
+        showToast('No se pudo enviar la encuesta: ' + err.message);
     }
     refrescarAviso(id);
 }

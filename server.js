@@ -1080,7 +1080,7 @@ app.post('/api/pedidos/sincronizar', auth.conModulo('pedidos'), async (req, res)
 });
 
 // POST /api/pedidos/actualizar
-//   { idTipoDocto, consecDocto, impresion, formacion, bodega, despachado, noGuia, contacto }
+//   { idTipoDocto, consecDocto, impresion, formacion, bodega, despachado, recibido, noGuia, contacto }
 // Solo toca las columnas del asesor; lo que viene de Siesa no se edita. Las
 // etapas se leen desde `pedidos.ETAPAS` para que agregar una sea un solo cambio
 // (esa lista, el DDL y la tabla del panel) y no haya que acordarse de esta ruta.
@@ -1229,6 +1229,77 @@ app.post('/api/pedidos/notificar', auth.conModulo('pedidos'), async (req, res) =
               reenvio: !!reenviar });
 
         res.json({ ok: true, id: respuesta.id, notificadoEn: new Date().toISOString() });
+    } catch (err) {
+        res.status(500).json({ error: errorPedidos(err) });
+    }
+});
+
+// POST /api/pedidos/encuesta  { idTipoDocto, consecDocto, reenviar }
+// Envia la encuesta de satisfaccion (plantilla `encuesta_satisfaccion_koski`)
+// cuando el cliente ya recibio el pedido. Mismo camino que el aviso de
+// despacho, pero a otro webhook de n8n y sin guia ni url de rastreo: la
+// plantilla es igual para todos y solo necesita a quien escribirle.
+app.post('/api/pedidos/encuesta', auth.conModulo('pedidos'), async (req, res) => {
+    try {
+        const { idTipoDocto, consecDocto, reenviar } = req.body || {};
+        if (!idTipoDocto || !Number.isFinite(Number(consecDocto))) {
+            return res.status(400).json({ error: 'falta idTipoDocto o consecDocto' });
+        }
+        if (!process.env.N8N_ENCUESTA_URL || !process.env.N8N_SEND_TOKEN) {
+            return res.status(503).json({ error: 'falta N8N_ENCUESTA_URL o N8N_SEND_TOKEN en el .env' });
+        }
+
+        // Se relee de SQL por la misma razon que en /api/pedidos/notificar.
+        const p = await pedidos.obtener(String(idTipoDocto), Number(consecDocto));
+        if (!p) return res.status(404).json({ error: 'pedido no encontrado' });
+
+        if (!p.contacto) {
+            return res.status(400).json({ error: 'el pedido no tiene celular de contacto' });
+        }
+        // La encuesta pregunta como le fue con el pedido. Si no lo ha recibido,
+        // la pregunta no tiene sentido para el cliente.
+        if (!p.recibido) {
+            return res.status(409).json({ error: 'marca el pedido como entregado antes de enviar la encuesta' });
+        }
+        if (p.encuestaEnviadaEn && !reenviar) {
+            return res.status(409).json({
+                error: 'a este pedido ya se le envio la encuesta el ' +
+                    new Date(p.encuestaEnviadaEn).toLocaleString('es-CO'),
+                yaNotificado: true
+            });
+        }
+
+        let respuesta;
+        try {
+            const r = await fetch(process.env.N8N_ENCUESTA_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-chatroom-token': process.env.N8N_SEND_TOKEN
+                },
+                body: JSON.stringify({ to: p.contacto, pedido: p.id }),
+                signal: AbortSignal.timeout(20000)
+            });
+            respuesta = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                return res.status(502).json({ error: respuesta.error || 'n8n respondio ' + r.status });
+            }
+        } catch (err) {
+            return res.status(502).json({ error: 'no se pudo contactar n8n: ' + err.message });
+        }
+
+        if (!respuesta.ok) {
+            return res.status(502).json({ error: respuesta.error || 'WhatsApp no acepto la encuesta' });
+        }
+
+        // Se sella solo despues de que Meta acepto, igual que el aviso.
+        await pedidos.marcarEncuestaEnviada(String(idTipoDocto), Number(consecDocto), respuesta.id,
+            req.usuario.usuario);
+
+        auditoria.registrar(req, 'pedidos.encuesta', p.id,
+            { contacto: p.contacto, wamid: respuesta.id || null, reenvio: !!reenviar });
+
+        res.json({ ok: true, id: respuesta.id, encuestaEnviadaEn: new Date().toISOString() });
     } catch (err) {
         res.status(500).json({ error: errorPedidos(err) });
     }
