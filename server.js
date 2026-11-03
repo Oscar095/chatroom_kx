@@ -216,6 +216,7 @@ const ETAPAS_PIPELINE = [
 ];
 
 const ETAPA_INICIAL = 'sin_asignar';
+const CLAVES_TERMINALES = ETAPAS_PIPELINE.filter(e => e.terminal).map(e => e.clave);
 
 function etapaDe(clave) {
     return ETAPAS_PIPELINE.find(e => e.clave === clave) || null;
@@ -228,11 +229,17 @@ function etapaDe(clave) {
 function pipelineDe(doc) {
     const p = doc.pipeline || {};
     const etapa = etapaDe(p.etapa) ? p.etapa : ETAPA_INICIAL;
+    const cerradoEn = etapaDe(etapa).terminal ? (p.cerradoEn || null) : null;
     return {
         etapa,
         desde: p.desde || null,
         nota: p.nota || null,
-        cerradoEn: etapaDe(etapa).terminal ? (p.cerradoEn || null) : null
+        cerradoEn,
+        // Cada despacho y cada desistimiento con su fecha. Con esto el tablero
+        // cuenta los cierres del mes con la MISMA regla que el Dashboard
+        // (dashboard.cierres): una venta no cambia de mes si la tarjeta se
+        // reabre despues, y un arrastre deshecho en minutos no cuenta.
+        cierres: dashboard.cierres(p.historial, CLAVES_TERMINALES, { etapa, cerradoEn })
     };
 }
 
@@ -906,7 +913,14 @@ app.post('/api/pipeline/mover', auth.conModulo('pipeline'), async (req, res) => 
         if (destino.terminal) cambio.$set['pipeline.cerradoEn'] = ahora;
         else cambio.$unset = { 'pipeline.cerradoEn': '' };
 
-        await db.collection(collection).updateOne({ _id: new ObjectId(id) }, cambio);
+        // Se pide el documento ya actualizado y no se arma el historial a mano:
+        // los cierres dependen de la entrada ANTERIOR (sacar una tarjeta del
+        // carril a los dos minutos anula ese cierre), y solo la base sabe cual
+        // quedo de verdad si dos asesores movieron la tarjeta a la vez. Solo
+        // se trae `pipeline`: el documento carga la memoria entera del bot.
+        const actualizado = await db.collection(collection).findOneAndUpdate(
+            { _id: new ObjectId(id) }, cambio,
+            { returnDocument: 'after', projection: { pipeline: 1 } });
 
         auditoria.registrar(req, 'pipeline.mover', collection + '/' + id,
             { de: anterior, a: destino.clave });
@@ -917,7 +931,8 @@ app.post('/api/pipeline/mover', auth.conModulo('pipeline'), async (req, res) => 
             anterior,
             desde: ahora,
             terminal: destino.terminal,
-            cerradoEn: destino.terminal ? ahora : null
+            cerradoEn: destino.terminal ? ahora : null,
+            cierres: actualizado ? pipelineDe(actualizado).cierres : []
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -966,7 +981,8 @@ app.post('/api/pipeline/nota', auth.conModulo('pipeline'), async (req, res) => {
    Los indicadores. El calculo esta en dashboard.js, que es una funcion pura;
    aqui solo se leen los datos y se le pasan.                               */
 
-// GET /api/dashboard?dias=90   (dias=0 -> todo el historico)
+// GET /api/dashboard?dias=90                         (dias=0 -> todo el historico)
+// GET /api/dashboard?desde=2026-10-01&hasta=2026-10-31  (dias de Bogota, ambos incluidos)
 //
 // Las conversaciones se leen ENTERAS, como en /api/sessions, porque el conteo
 // de mensajes tiene que salir de filterMessages() y no de messages.length: la
@@ -977,7 +993,37 @@ app.post('/api/pipeline/nota', auth.conModulo('pipeline'), async (req, res) => {
 // calculo, que ya recibe solo numeros.
 app.get('/api/dashboard', auth.conModulo('dashboard'), async (req, res) => {
     try {
-        const dias = Math.min(3650, Math.max(0, Number(req.query.dias) || 0)) || 90;
+        // Sin `dias` son 90; `dias=0` es todo el historico y tiene que llegar
+        // como 0 (un `|| 90` lo convertia en 90 y el boton "Todo" mentia).
+        const n = Number(req.query.dias);
+        const dias = req.query.dias === undefined || !Number.isFinite(n)
+            ? 90 : Math.min(3650, Math.max(0, Math.floor(n)));
+
+        // Un rango de calendario. Las fechas son dias de Colombia: el 1 de
+        // octubre empieza a las 00:00 de Bogota, no de UTC, y `hasta` incluye
+        // su dia entero (por eso se le suma uno y la ventana es exclusiva).
+        // El formato solo no basta: '2026-02-31' pasa la expresion y Date.parse
+        // lo corre en silencio al 3 de marzo. Se exige que el dia exista
+        // volviendolo a escribir y comparando.
+        const DIA_RE = /^\d{4}-\d{2}-\d{2}$/;
+        const diaBogota = s => {
+            if (!DIA_RE.test(s)) return NaN;
+            const ms = Date.parse(s + 'T00:00:00-05:00');
+            return Number.isFinite(ms) && new Date(ms - 5 * 3600000).toISOString().slice(0, 10) === s
+                ? ms : NaN;
+        };
+        let desde, hasta;
+        if (req.query.desde || req.query.hasta) {
+            const d = String(req.query.desde || ''), h = String(req.query.hasta || '');
+            desde = diaBogota(d);
+            hasta = diaBogota(h) + 86400000;
+            if (!Number.isFinite(desde) || !Number.isFinite(hasta)) {
+                return res.status(400).json({ error: 'desde y hasta tienen que ser fechas AAAA-MM-DD' });
+            }
+            if (hasta <= desde) {
+                return res.status(400).json({ error: 'la fecha final no puede ser anterior a la inicial' });
+            }
+        }
 
         const contactos = await loadContacts();
 
@@ -1011,6 +1057,7 @@ app.get('/api/dashboard', auth.conModulo('dashboard'), async (req, res) => {
                     modo: doc.mode === 'manual' ? 'manual' : 'auto',
                     etapa: p.etapa,
                     etapaDesde: p.desde,
+                    cerradoEn: p.cerradoEn,
                     historial: (doc.pipeline && doc.pipeline.historial) || [],
                     mensajes: msgs.length,
                     delCliente: msgs.filter(m => m.type === 'human').length,
@@ -1020,7 +1067,7 @@ app.get('/api/dashboard', auth.conModulo('dashboard'), async (req, res) => {
             }
         }
 
-        const datos = dashboard.resumen({ chats, etapas: ETAPAS_PIPELINE, dias });
+        const datos = dashboard.resumen({ chats, etapas: ETAPAS_PIPELINE, dias, desde, hasta });
 
         // Los pedidos van aparte y en su propio try: SQL Server es perezoso y
         // puede estar caido o con la IP fuera del firewall, y eso no puede

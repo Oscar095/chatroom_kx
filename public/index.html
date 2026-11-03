@@ -1688,6 +1688,27 @@
             background: color-mix(in srgb, var(--kos-blue) 11%, transparent);
         }
         .pl-chip-n { font-family: var(--mono); font-size: 10.5px; opacity: .7; }
+        /* La linea del mes en el Pipeline: lo que paso, debajo de lo que hay. */
+        .pl-mes-linea { display: inline-block; margin-top: 3px; color: var(--ink-soft); }
+        .pl-mes-linea b { color: var(--ink); }
+
+        /* Filtro de fechas del Dashboard: el mes y el rango se ven como un
+           chip mas, para que los tres modos se lean como una sola fila. */
+        select.pl-chip { appearance: none; padding-right: 28px;
+            background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                              linear-gradient(135deg, currentColor 50%, transparent 50%);
+            background-position: right 14px center, right 9px center;
+            background-size: 5px 5px; background-repeat: no-repeat; }
+        select.pl-chip.on { background-color: color-mix(in srgb, var(--kos-blue) 11%, transparent); }
+        .dash-rango { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%;
+            justify-content: flex-end; }
+        .dash-rango[hidden] { display: none; }
+        .dash-rango input[type=date] {
+            font-family: var(--font); font-size: 12px; color: var(--ink);
+            background: var(--surface); border: 1px solid var(--line-strong);
+            border-radius: 8px; padding: 6px 9px; color-scheme: light dark;
+        }
+        .dash-rango span { font-size: 12px; color: var(--ink-muted); }
 
         /* --- Menu de la tarjeta -----------------------------------------
            El tablero tiene que poder usarse sin arrastrar: el drag nativo del
@@ -4302,9 +4323,99 @@ let plAbiertos = {};          // carriles terminales desplegados, por clave
 let plArrastrando = null;
 let plMenuTarjeta = null;     // { id, col } de la tarjeta con el menu abierto
 
+/* El mes de los carriles terminales. Despachado y Desistio se miden por mes:
+   muestran solo lo que se cerro en el mes elegido y arrancan en cero cada
+   mes nuevo. Las columnas activas NO se filtran: son el trabajo pendiente, y
+   una cotizacion de septiembre que sigue viva en octubre sigue siendo trabajo
+   de octubre — esconderla por su fecha la haria desaparecer del tablero.
+
+   null es "el mes en curso" y sigue al reloj: con el panel abierto toda la
+   noche del 31, los carriles se reinician solos el 1. Un 'AAAA-MM' fija un
+   mes; 'todo' es el comportamiento de antes, todo lo cerrado alguna vez.   */
+let plMes = null;
+// El mes en curso con el que se pinto el tablero por ultima vez. Si el reloj
+// pasa a otro mes con el tablero en pantalla, plRevisarCambioDeMes() lo
+// repinta: los carriles no pueden esperar a que alguien escriba para
+// reiniciarse, porque el 1 a las 00:05 nadie escribe.
+let plMesPintado = null;
+
+function plRevisarCambioDeMes() {
+    if (currentView !== 'pipeline' || plMes !== null || !plMesPintado) return;
+    if (plMesHoy() !== plMesPintado) plPintarTablero();
+}
+
 // Cuantas tarjetas cerradas se listan al desplegar un carril. Son historico:
 // crecen para siempre y nadie revisa mas alla de las ultimas.
 const PL_TOPE_CERRADAS = 30;
+
+// El mes de calendario de Bogota de un instante, 'AAAA-MM'. Sin el ajuste, un
+// despacho del 31 a las 8 p.m. contaria como del mes siguiente.
+function mesBogota(v) {
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? new Date(t - 5 * 3600000).toISOString().slice(0, 7) : null;
+}
+
+function plMesHoy() { return mesBogota(Date.now()); }
+function plMesVisto() { return plMes || plMesHoy(); }
+
+function plNombreMes(k) {
+    if (k === 'todo') return 'Todo el histórico';
+    const [a, m] = k.split('-').map(Number);
+    const n = MESES_LARGOS[m - 1];
+    return n[0].toUpperCase() + n.slice(1) + ' ' + a;
+}
+
+// ¿La tarjeta cerrada se ve en el carril del mes elegido? Va por `cerradoEn`,
+// la fecha en que entro al carril donde esta hoy.
+function plCerradaEnMes(s) {
+    const mes = plMesVisto();
+    if (mes === 'todo') return true;
+    return mesBogota(s.pipeline && s.pipeline.cerradoEn) === mes;
+}
+
+// Las tarjetas que el tablero pinta: todas las abiertas, y de las cerradas
+// solo las del mes elegido.
+function plEnTablero(lista) {
+    return lista.filter(s => {
+        const e = plEtapa(plEtapaDe(s));
+        return !(e && e.terminal) || plCerradaEnMes(s);
+    });
+}
+
+/* Lo que paso en el mes: leads que llegaron, despachados y desistidos.
+
+   Los cierres salen de `pipeline.cierres`, que arma el servidor con la misma
+   regla del Dashboard (dashboard.cierres): por eso las dos pantallas dan el
+   mismo numero para el mismo mes. Aqui solo se cuentan. Los leads son TODAS
+   las conversaciones que nacieron en el mes, archivadas incluidas, igual que
+   en el Dashboard: cuentan como lead aunque nadie las haya clasificado.
+
+   Respeta el filtro de canal y no el buscador: el buscador es para encontrar
+   una tarjeta, no para cambiar las cuentas del mes.                        */
+function plMetricasMes() {
+    const mes = plMesVisto();
+    const todas = porCanal(Object.keys(sessionsByCol).flatMap(c => sessionsByCol[c] || []), plCanal);
+    const enMes = v => mes === 'todo' || mesBogota(v) === mes;
+    // Las dos reglas son copia de despachoEn()/desistioEn() en dashboard.js:
+    // una venta que ocurrio cuenta siempre; un desistimiento no cuenta si un
+    // despacho POSTERIOR del mismo mes lo dejo sin efecto.
+    const delMes = s => ((s.pipeline && s.pipeline.cierres) || []).filter(x => enMes(x.en));
+    const t = x => new Date(x.en).getTime();
+    const despacho = s => delMes(s).some(x => x.etapa === 'despachado');
+    const desistio = s => {
+        const k = delMes(s);
+        return k.some(x => x.etapa !== 'despachado' &&
+            !k.some(y => y.etapa === 'despachado' && t(y) > t(x)));
+    };
+
+    const leads = todas.filter(s => enMes(s.startedAt)).length;
+    const despachados = todas.filter(despacho).length;
+    const desistidos = todas.filter(desistio).length;
+    return {
+        mes, leads, despachados, desistidos,
+        conversion: leads ? Math.round(despachados / leads * 1000) / 10 : null
+    };
+}
 
 function plEtapa(clave) {
     return (plEtapas || []).find(e => e.clave === clave) || null;
@@ -4351,6 +4462,40 @@ function plCerradas() {
     return plBase().filter(s => { const e = plEtapa(plEtapaDe(s)); return e && e.terminal; }).length;
 }
 
+// Los meses que se ofrecen: del primer lead al mes en curso, el mas reciente
+// arriba. Antes del bot no hay nada que medir.
+function plMesesDisponibles() {
+    const hoy = plMesHoy();
+    const inicios = Object.keys(sessionsByCol).flatMap(c => sessionsByCol[c] || [])
+        .map(s => mesBogota(s.startedAt)).filter(Boolean);
+    const primero = inicios.length ? inicios.reduce((a, b) => a < b ? a : b) : hoy;
+    const meses = [];
+    let [a, m] = hoy.split('-').map(Number);
+    for (let i = 0; i < 120; i++) {
+        const k = a + '-' + String(m).padStart(2, '0');
+        if (k < primero) break;
+        meses.push(k);
+        if (--m === 0) { m = 12; a--; }
+    }
+    // Un mes fijado que ya no esta en la lista (no deberia pasar) se ofrece
+    // igual: si no, el selector mostraria un mes y los carriles otro.
+    if (plMes && plMes !== 'todo' && !meses.includes(plMes)) meses.push(plMes);
+    return meses;
+}
+
+function plSelectorMesHTML() {
+    const visto = plMesVisto();
+    const hoy = plMesHoy();
+    return `
+        <select class="pl-chip on" id="plMesSel" onchange="plSetMes(this.value)"
+                aria-label="Mes de Despachado y Desistió"
+                title="Despachado y Desistió muestran solo lo que se cerró en este mes">
+            ${plMesesDisponibles().map(k => `
+                <option value="${k}" ${visto === k ? 'selected' : ''}>${plNombreMes(k)}${k === hoy ? ' (en curso)' : ''}</option>`).join('')}
+            <option value="todo" ${visto === 'todo' ? 'selected' : ''}>Todo el histórico</option>
+        </select>`;
+}
+
 /* --- Pintado ----------------------------------------------------------- */
 
 async function renderPipeline(opts = {}) {
@@ -4392,6 +4537,7 @@ async function renderPipeline(opts = {}) {
                            oninput="plFiltrar(this.value)">
                     <span class="ped-count" id="plCount"></span>
                 </div>
+                <span id="plMesCaja">${plSelectorMesHTML()}</span>
                 <button class="pl-chip ${plCanal === 'all' ? 'on' : ''}" data-ch="all"
                         onclick="plSetCanal(this)">Todos</button>
                 <button class="pl-chip ${plCanal === 'whatsapp' ? 'on' : ''}" data-ch="whatsapp"
@@ -4401,6 +4547,7 @@ async function renderPipeline(opts = {}) {
             </div>
         </div>
         <div class="pl-board" id="plBoard">${plTableroHTML()}</div>`;
+    plMesPintado = plMesHoy();
 }
 
 // Repinta solo el tablero y los contadores. El repintado completo recrea el
@@ -4409,20 +4556,42 @@ function plPintarTablero() {
     const board = document.getElementById('plBoard');
     if (!board || plArrastrando) return;
     board.innerHTML = plTableroHTML();
+    plMesPintado = plMesHoy();
     const sub = document.getElementById('plSub');
     if (sub) sub.innerHTML = plResumen();
+    // El selector se rehace por si cambio el mes en curso o entro el primer
+    // lead de un mes nuevo; si el asesor lo tiene abierto, no se le toca.
+    const caja = document.getElementById('plMesCaja');
+    if (caja && document.activeElement !== document.getElementById('plMesSel')) {
+        caja.innerHTML = plSelectorMesHTML();
+    }
+    // Cuenta lo que de verdad se puede ver: una tarjeta cerrada en otro mes
+    // no esta en ningun carril, y contarla haria buscar algo que no aparece.
     const cont = document.getElementById('plCount');
-    if (cont) cont.textContent = plQuery.trim() ? plTarjetas().length + ' de ' + plBase().length : '';
+    if (cont) cont.textContent = plQuery.trim()
+        ? plEnTablero(plTarjetas()).length + ' de ' + plEnTablero(porCanal(plBase(), plCanal)).length : '';
     updateCounters();
 }
 
+// Dos lineas que responden cosas distintas: lo que hay abierto HOY (no depende
+// del mes) y como va el mes elegido. Mezclarlas en una sola haria pensar que
+// las activas tambien son "del mes".
 function plResumen() {
-    const sin = plSinAsignar();
-    const total = plBase().length - plCerradas();
-    const cerradas = plCerradas();
-    return `${total} ${total === 1 ? 'conversación activa' : 'conversaciones activas'}` +
+    // Las dos lineas con el mismo filtro de canal que el tablero. El punto del
+    // rail (plSinAsignar) sigue siendo de los dos canales: avisa de todo.
+    const base = porCanal(plBase(), plCanal);
+    const sin = plDeEtapa(base, 'sin_asignar').length;
+    const total = base.filter(s => { const e = plEtapa(plEtapaDe(s)); return !(e && e.terminal); }).length;
+    const m = plMetricasMes();
+    const n = (v, uno, varios) => `${v} ${v === 1 ? uno : varios}`;
+    const conv = m.conversion === null ? '—' : String(m.conversion).replace('.', ',') + '%';
+    return `${n(total, 'conversación activa', 'conversaciones activas')} hoy` +
            (sin ? ` · <b>${sin} sin asignar</b>` : '') +
-           (cerradas ? ` · ${cerradas} ${cerradas === 1 ? 'cerrada' : 'cerradas'}` : '');
+           `<br><span class="pl-mes-linea" title="Conversión del mes: despachados en el mes sobre leads que llegaron en el mes, cada uno por su propia fecha">` +
+           `<b>${escapeHtml(plNombreMes(m.mes))}</b>: ${n(m.leads, 'lead', 'leads')}` +
+           ` · <b>${m.despachados}</b> ${m.despachados === 1 ? 'despachado' : 'despachados'}` +
+           ` · ${m.desistidos} ${m.desistidos === 1 ? 'desistió' : 'desistieron'}` +
+           ` · conversión <b>${conv}</b></span>`;
 }
 
 function plTableroHTML() {
@@ -4473,20 +4642,39 @@ const PL_ICONO_CERRAR = {
 
 // Un carril terminal: plegado es una franja estrecha que acepta el drop;
 // desplegado se comporta como una columna mas para poder reabrir una tarjeta.
+/* Un carril terminal muestra solo lo que se cerro en el mes elegido (ver
+   plMes), lo ultimo cerrado arriba: en un carril de cierres lo que importa
+   es el orden en que se cerraron, no quien escribio por ultimo.          */
 function plCarrilHTML(etapa, lista) {
-    const cards = plOrdenar(plDeEtapa(lista, etapa.clave));
+    const fecha = s => new Date((s.pipeline && s.pipeline.cerradoEn) || 0).getTime() || 0;
+    const cards = plDeEtapa(lista, etapa.clave).filter(plCerradaEnMes)
+        .sort((a, b) => fecha(b) - fecha(a));
     const icono = PL_ICONO_CERRAR[etapa.clave] || '<circle cx="12" cy="12" r="8.5"/>';
+    const mes = plMesVisto();
+    const deMes = mes === 'todo' ? 'alguna vez' : 'en ' + plNombreMes(mes).toLowerCase();
 
     if (!plAbiertos[etapa.clave]) {
         return `
         <div class="pl-lane" data-etapa="${etapa.clave}" ${PL_DROP(etapa.clave)}
              onclick="plToggleCarril('${etapa.clave}')"
-             title="${escapeAttr(etapa.descripcion || '')} — clic para ver las tarjetas">
+             title="${escapeAttr((etapa.descripcion || '') + ' — cerradas ' + deMes + '. Clic para ver las tarjetas')}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round">${icono}</svg>
             <div class="pl-lane-tit">${escapeHtml(etapa.nombre)}</div>
             <div class="pl-lane-n">${cards.length}</div>
         </div>`;
+    }
+
+    // Una tarjeta que se cerro aqui este mes y despues se reabrio (o paso al
+    // otro carril) cuenta en las cifras del mes —la venta ocurrio— pero ya no
+    // esta en este carril. Se dice, para que el carril y el resumen de arriba
+    // no parezcan contradecirse. Con el buscador activo no se calcula: ahi el
+    // carril muestra a proposito menos de lo que hay.
+    let reabiertas = 0;
+    if (!plQuery.trim() && mes !== 'todo') {
+        const m = plMetricasMes();
+        const delMes = etapa.clave === 'despachado' ? m.despachados : m.desistidos;
+        reabiertas = Math.max(0, delMes - cards.length);
     }
 
     const visibles = cards.slice(0, PL_TOPE_CERRADAS);
@@ -4498,10 +4686,14 @@ function plCarrilHTML(etapa, lista) {
             <div class="pl-col-tit">${escapeHtml(etapa.nombre)}<span class="pl-col-n">${cards.length}</span></div>
         </header>
         <div class="pl-col-body scroll">
+            <div class="pl-vacia">Cerradas ${escapeHtml(deMes)}</div>
             ${visibles.length ? visibles.map(plTarjetaHTML).join('') : `
-                <div class="pl-vacia">Todavía no hay nada cerrado aquí.</div>`}
+                <div class="pl-vacia">${mes === 'todo' ? 'Todavía no hay nada cerrado aquí.' : 'Nada cerrado aquí este mes.'}</div>`}
             ${cards.length > visibles.length
-                ? `<div class="pl-vacia">y ${cards.length - visibles.length} más, más antiguas</div>` : ''}
+                ? `<div class="pl-vacia">y ${cards.length - visibles.length} más, cerradas antes</div>` : ''}
+            ${reabiertas
+                ? `<div class="pl-vacia">${reabiertas === 1 ? 'Otra se cerró' : `Otras ${reabiertas} se cerraron`} este mes
+                     y luego se ${reabiertas === 1 ? 'movió' : 'movieron'}: ${reabiertas === 1 ? 'cuenta' : 'cuentan'} arriba, pero hoy ya no ${reabiertas === 1 ? 'está' : 'están'} en este carril.</div>` : ''}
         </div>
     </section>`;
 }
@@ -4563,7 +4755,16 @@ function plFiltrar(v) {
 
 function plSetCanal(el) {
     plCanal = el.dataset.ch;
-    document.querySelectorAll('#pipelinePanel .pl-chip').forEach(c => c.classList.toggle('on', c === el));
+    // Solo los chips de canal: el selector de mes tambien es .pl-chip y se
+    // quedaria apagado.
+    document.querySelectorAll('#pipelinePanel .pl-chip[data-ch]').forEach(c => c.classList.toggle('on', c === el));
+    plPintarTablero();
+}
+
+// Elegir el mes en curso guarda null y no su clave: asi el carril sigue al
+// reloj y se reinicia solo cuando el mes cambie.
+function plSetMes(v) {
+    plMes = (!v || v === plMesHoy()) ? null : v;
     plPintarTablero();
 }
 
@@ -4644,7 +4845,7 @@ async function plMover(id, col, etapa, opts = {}) {
     const destino = plEtapa(etapa);
     if (!s || !destino) return;
 
-    const previo = s.pipeline || { etapa: 'sin_asignar', desde: null, nota: null, cerradoEn: null };
+    const previo = s.pipeline || { etapa: 'sin_asignar', desde: null, nota: null, cerradoEn: null, cierres: [] };
     if (previo.etapa === etapa) return;
 
     const ahora = new Date().toISOString();
@@ -4652,17 +4853,26 @@ async function plMover(id, col, etapa, opts = {}) {
         etapa,
         desde: ahora,
         nota: previo.nota || null,
-        cerradoEn: destino.terminal ? ahora : null
+        cerradoEn: destino.terminal ? ahora : null,
+        // Provisional: la cuenta del mes sube en el acto. La verdad llega con
+        // la respuesta del servidor, que es el que sabe si sacar la tarjeta
+        // del carril a los dos minutos anula el cierre anterior.
+        cierres: (previo.cierres || []).concat(destino.terminal ? [{ etapa, en: ahora }] : [])
     };
     plPintarTablero();
 
+    let r;
     try {
-        await plPost('mover', { collection: col, id, etapa });
+        r = await plPost('mover', { collection: col, id, etapa });
     } catch (err) {
         s.pipeline = previo;
         plPintarTablero();
         showToast('No se pudo mover: ' + err.message);
         return;
+    }
+    if (r && Array.isArray(r.cierres) && s.pipeline && s.pipeline.etapa === etapa) {
+        s.pipeline.cierres = r.cierres;
+        plPintarTablero();
     }
 
     const quien = sessionLabel(s, col === 'wa_chats_web');
@@ -4670,8 +4880,11 @@ async function plMover(id, col, etapa, opts = {}) {
         showToast(quien + ' vuelve a ' + destino.nombre);
     } else if (destino.terminal) {
         // Cerrar saca la tarjeta del tablero: hay que poder desandarlo sin
-        // tener que ir a buscarla al carril.
-        showToast(quien + ' · ' + destino.nombre + ', fuera del tablero',
+        // tener que ir a buscarla al carril. Si se esta mirando otro mes, se
+        // avisa en cual cuenta: el carril visible no la va a mostrar.
+        const otroMes = plMesVisto() !== plMesHoy() && plMesVisto() !== 'todo';
+        showToast(quien + ' · ' + destino.nombre + ', fuera del tablero' +
+            (otroMes ? ' (cuenta en ' + plNombreMes(plMesHoy()).toLowerCase() + ')' : ''),
             { texto: 'Deshacer', fn: () => plMover(id, col, previo.etapa, { deshaciendo: true }) });
     } else {
         showToast(quien + ' → ' + destino.nombre);
@@ -4813,7 +5026,12 @@ document.addEventListener('click', ev => {
    dato falso con aspecto de dato bueno.                                    */
 
 let dashData = null;
-let dashDias = 90;            // ventana del periodo; 0 = todo el historico
+// El periodo, en uno de tres modos:
+//   { dias: 90 }                          ultimos N dias; 0 = todo el historico
+//   { mes: '2026-10' }                    un mes de calendario
+//   { desde: '2026-10-01', hasta: '…' }   un rango, los dos dias incluidos
+let dashFiltro = { dias: 90 };
+let dashRangoAbierto = false; // se ven los dos campos de fecha
 let dashGran = 'mes';         // granularidad de la grafica de leads
 let dashCargadoEn = 0;
 let dashCargando = false;
@@ -4840,7 +5058,7 @@ async function renderDash(opts = {}) {
         if (dashCargando) return;
         dashCargando = true;
         try {
-            const d = await fetchAPI('dashboard', { dias: dashDias });
+            const d = await fetchAPI('dashboard', dashParams());
             if (!d || d.error) throw new Error((d && d.error) || 'respuesta inesperada del servidor');
             dashData = d;
             dashCargadoEn = Date.now();
@@ -4849,8 +5067,11 @@ async function renderDash(opts = {}) {
             // vaciar la vista: unos numeros de hace dos minutos sirven, una
             // pantalla en blanco no.
             if (!dashData) {
+                // El boton es la salida: sin datos no se pintan los filtros, y
+                // un periodo que falla dejaria la vista sin forma de cambiarlo.
                 panel.innerHTML = `<div class="pl-vacio"><p>No se pudieron calcular los indicadores.<br>
-                    <b>${escapeHtml(err.message)}</b></p></div>`;
+                    <b>${escapeHtml(err.message)}</b></p>
+                    <button class="pl-chip" onclick="dashCambiarFiltro({ dias: 90 })">Volver a 90 días</button></div>`;
                 return;
             }
             showToast('No se pudo actualizar el dashboard: ' + err.message);
@@ -4873,8 +5094,23 @@ function dashPintar() {
             </div>
             <div class="ped-actions">
                 ${DASH_PERIODOS.map(p => `
-                    <button class="pl-chip ${dashDias === p.dias ? 'on' : ''}" data-dias="${p.dias}"
+                    <button class="pl-chip ${dashFiltro.dias === p.dias ? 'on' : ''}" data-dias="${p.dias}"
                             onclick="dashSetDias(this)">${p.rotulo}</button>`).join('')}
+                <select class="pl-chip ${dashFiltro.mes ? 'on' : ''}" onchange="dashSetMes(this.value)"
+                        aria-label="Ver un mes">
+                    <option value="" ${dashFiltro.mes ? '' : 'selected'}>Mes…</option>
+                    ${dashMeses(d).map(m => `
+                        <option value="${m.k}" ${dashFiltro.mes === m.k ? 'selected' : ''}>${m.rotulo}</option>`).join('')}
+                </select>
+                <button class="pl-chip ${dashFiltro.desde ? 'on' : ''}"
+                        onclick="dashAbrirRango()">Personalizado</button>
+                <div class="dash-rango" ${dashRangoAbierto ? '' : 'hidden'}>
+                    <span>Del</span>
+                    <input type="date" id="dashDesde" value="${dashFiltro.desde || ''}" max="${dashHoy()}">
+                    <span>al</span>
+                    <input type="date" id="dashHasta" value="${dashFiltro.hasta || dashHoy()}" max="${dashHoy()}">
+                    <button class="pl-chip on" onclick="dashAplicarRango()">Aplicar</button>
+                </div>
             </div>
         </div>
         <div class="dash-grid">
@@ -4889,17 +5125,123 @@ function dashPintar() {
         </div>`;
 }
 
-function dashSubtitulo() {
-    const p = DASH_PERIODOS.find(x => x.dias === dashDias);
-    const cuando = dashCargadoEn ? ' · actualizado ' + formatTime(new Date(dashCargadoEn).toISOString()) : '';
-    return (dashDias ? 'Últimos ' + (p ? p.rotulo.toLowerCase() : dashDias + ' días') : 'Todo el histórico') + cuando;
+const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// Lo que se le manda a /api/dashboard. El mes se traduce aqui a un rango de
+// dias para que el servidor tenga una sola forma de recibir fechas.
+function dashParams() {
+    const f = dashFiltro;
+    if (f.mes) {
+        const [a, m] = f.mes.split('-').map(Number);
+        const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
+        return { desde: f.mes + '-01', hasta: f.mes + '-' + String(ultimo).padStart(2, '0') };
+    }
+    if (f.desde) return { desde: f.desde, hasta: f.hasta };
+    return { dias: f.dias };
 }
 
-function dashSetDias(el) {
-    dashDias = Number(el.dataset.dias);
+// Hoy en Colombia, como 'YYYY-MM-DD'. No sale de toISOString() a secas porque
+// desde las 7 p.m. eso ya es manana.
+function dashHoy() {
+    return new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+}
+
+// Un instante del servidor como fecha corta de Bogota: '1 oct 2026'.
+function dashFecha(iso) {
+    const p = dashPartes(new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 10));
+    return `${p.d} ${MESES_CORTOS[p.m - 1]} ${p.a}`;
+}
+
+// Los meses que se pueden elegir: del primer lead al mes en curso, el mas
+// reciente arriba. Ofrecer meses anteriores al bot solo daria pantallas en cero.
+function dashMeses(d) {
+    const hoy = dashHoy();
+    const primero = (d && d.periodo && d.periodo.primerLead)
+        ? new Date(new Date(d.periodo.primerLead).getTime() - 5 * 3600000).toISOString().slice(0, 7)
+        : hoy.slice(0, 7);
+    const meses = [];
+    let [a, m] = hoy.slice(0, 7).split('-').map(Number);
+    for (let i = 0; i < 120; i++) {
+        const k = a + '-' + String(m).padStart(2, '0');
+        if (k < primero) break;
+        const rot = MESES_LARGOS[m - 1];
+        meses.push({ k, rotulo: rot[0].toUpperCase() + rot.slice(1) + ' ' + a + (k === hoy.slice(0, 7) ? ' (en curso)' : '') });
+        if (--m === 0) { m = 12; a--; }
+    }
+    return meses;
+}
+
+// Que periodo se esta viendo y contra cual se compara. Lo arma el servidor
+// (periodo.desde/hasta/anterior), no el filtro: asi el rotulo dice lo que de
+// verdad se calculo, con el mes en curso ya cortado en hoy.
+function dashSubtitulo() {
+    const f = dashFiltro, per = (dashData && dashData.periodo) || {};
+    let que;
+    if (f.mes) {
+        const [a, m] = f.mes.split('-').map(Number);
+        que = MESES_LARGOS[m - 1][0].toUpperCase() + MESES_LARGOS[m - 1].slice(1) + ' ' + a +
+            (f.mes === dashHoy().slice(0, 7) ? ' (hasta hoy)' : '');
+    } else if (f.desde) {
+        que = 'Del ' + dashFecha(per.desde || f.desde + 'T05:00:00Z') + ' al ' +
+            dashFecha(new Date(new Date(per.hasta || f.hasta + 'T05:00:00Z').getTime() - 1).toISOString());
+    } else {
+        const p = DASH_PERIODOS.find(x => x.dias === f.dias);
+        que = f.dias ? 'Últimos ' + (p ? p.rotulo.toLowerCase() : f.dias + ' días') : 'Todo el histórico';
+    }
+    const contra = per.anterior ? ' · comparado con ' + dashRotuloAnterior(per.anterior) : '';
+    const cuando = dashCargadoEn ? ' · actualizado ' + formatTime(new Date(dashCargadoEn).toISOString()) : '';
+    return escapeHtml(que + contra) + cuando;
+}
+
+// "septiembre 2026" si la ventana anterior es un mes entero; si no, las fechas.
+function dashRotuloAnterior(a) {
+    const ini = new Date(new Date(a.desde).getTime() - 5 * 3600000);
+    const fin = new Date(new Date(a.hasta).getTime() - 5 * 3600000);
+    const mesEntero = ini.getUTCDate() === 1 && fin.getUTCDate() === 1 && ini.getUTCHours() === 0 &&
+        fin.getUTCHours() === 0 && (fin.getUTCMonth() - ini.getUTCMonth() + 12) % 12 === 1;
+    if (mesEntero) return MESES_LARGOS[ini.getUTCMonth()] + ' ' + ini.getUTCFullYear();
+    return dashFecha(a.desde) + ' – ' + dashFecha(new Date(new Date(a.hasta).getTime() - 1).toISOString());
+}
+
+function dashCambiarFiltro(f) {
+    dashFiltro = f;
     dashData = null;          // el periodo cambia las cuentas: hay que repedirlas
     dashCargadoEn = 0;
     renderDash();
+}
+
+function dashSetDias(el) {
+    const dias = Number(el.dataset.dias);
+    dashRangoAbierto = false;
+    // Volviendo de un mes, 90 dias en barras diarias se cortarian en 45.
+    if (dashGran === 'dia' && (dias === 0 || dias > 45)) dashGran = 'mes';
+    dashCambiarFiltro({ dias });
+}
+
+function dashSetMes(mes) {
+    if (!mes) return;
+    dashRangoAbierto = false;
+    // Un mes en barras por mes es una sola barra: se pasa a dias.
+    dashGran = 'dia';
+    dashCambiarFiltro({ mes });
+}
+
+function dashAbrirRango() {
+    dashRangoAbierto = !dashRangoAbierto;
+    dashPintar();
+    if (dashRangoAbierto) document.getElementById('dashDesde').focus();
+}
+
+function dashAplicarRango() {
+    const desde = document.getElementById('dashDesde').value;
+    const hasta = document.getElementById('dashHasta').value;
+    if (!desde || !hasta) return showToast('Elige la fecha inicial y la final.');
+    if (hasta < desde) return showToast('La fecha final no puede ser anterior a la inicial.');
+    const dias = (Date.parse(hasta) - Date.parse(desde)) / 86400000 + 1;
+    if (dias <= 45) dashGran = 'dia';
+    else if (dias <= 180 && dashGran === 'dia') dashGran = 'semana';
+    dashCambiarFiltro({ desde, hasta });
 }
 
 function dashSetGran(el) {
@@ -5046,22 +5388,25 @@ function dashKpis(d) {
             `${d.leads.whatsapp} WhatsApp · ${d.leads.web} Web`,
             dashDelta(d.leads.variacion)),
 
+        // Despachados EN el periodo sobre leads que LLEGARON en el periodo,
+        // cada uno por su fecha: un lead de septiembre despachado en octubre
+        // cuenta en octubre. Por eso puede pasar de 100% en un mes flojo.
         tarjeta('Conversión',
             c.tasa === null ? '—' : c.tasa + '<small>%</small>',
-            c.ganados
-                ? `${c.ganados} de ${d.leads.total} terminaron en pedido`
-                : 'Aún no hay tarjetas en Despachado',
-            dashDelta(c.variacion, 'ganados vs. periodo anterior')),
+            d.leads.total
+                ? `${c.ganados} ${c.ganados === 1 ? 'despachado' : 'despachados'} en el periodo / ${d.leads.total} leads que llegaron`
+                : 'Sin leads en el periodo',
+            dashDelta(c.variacion, 'despachados vs. periodo anterior')),
 
         tarjeta('Tasa de cierre',
             c.cierre === null ? '—' : c.cierre + '<small>%</small>',
             c.ganados + c.perdidos
-                ? `${c.ganados} ganados · ${c.perdidos} perdidos · ${c.enCurso} abiertos`
-                : 'De los que ya se definieron'),
+                ? `${c.ganados} despachados · ${c.perdidos} desistieron en el periodo`
+                : 'De lo que se cerró en el periodo'),
 
         tarjeta('Ciclo de venta',
             c.cicloDias === null ? '—' : dashDias1(c.cicloDias),
-            c.cicloDias === null ? 'Del primer mensaje al despacho' : 'Mediana, del primer mensaje al despacho'),
+            c.cicloDias === null ? 'Del primer mensaje al despacho' : 'Mediana de las ventas del periodo, del primer mensaje al despacho'),
 
         tarjeta('Sin asignar', d.sinAsignar,
             d.sinAsignar ? 'Nadie las ha clasificado en el Pipeline' : 'Todo el embudo está clasificado'),
@@ -5095,17 +5440,20 @@ function dashLeads(d) {
         <div class="dash-pie">
             <b>${total}</b> conversaciones nuevas en el gráfico, pico de <b>${pico}</b> en un
             ${dashGran === 'dia' ? 'día' : dashGran === 'semana' ? 'semana' : 'mes'}.
-            La serie va desde el primer lead hasta hoy y <b>no depende del periodo elegido arriba</b>.
+            Del periodo elegido arriba${dashGran === 'dia' && items.length >= 45 ? ' (en días se ven los últimos 45)' : ''}.
         </div>
     </div>`;
 }
 
 function dashEmbudo(d) {
+    // Si el periodo ya cerro, el servidor reconstruye el embudo como estaba
+    // ese dia; si no, es el de ahora.
+    const corte = d.periodo && d.periodo.corte;
     const activas = d.embudo.filter(e => !e.terminal);
     const cerradas = d.embudo.filter(e => e.terminal);
     return `
     <div class="dash-card c4">
-        <div class="dash-tit">Embudo hoy</div>
+        <div class="dash-tit">${corte ? 'Embudo al ' + dashFecha(new Date(new Date(corte).getTime() - 1).toISOString()) : 'Embudo hoy'}</div>
         ${dashBarrasH(activas.map(e => ({
             clave: e.clave, nombre: e.nombre, valor: e.n,
             texto: String(e.n),
@@ -5114,7 +5462,9 @@ function dashEmbudo(d) {
         <div class="dash-pie">
             <b>${d.activas}</b> conversaciones abiertas en el embudo.
             Cerradas: ${cerradas.map(e => `<b>${e.n}</b> ${e.nombre.toLowerCase()}`).join(' · ')}.
-            Es una foto de <b>ahora</b>, no del periodo.
+            ${corte
+                ? `Es una foto <b>del cierre del periodo</b>, armada con el historial de cada tarjeta.`
+                : `Es una foto de <b>ahora</b>: no esconde las tarjetas viejas.`}
         </div>
     </div>`;
 }
@@ -5167,7 +5517,7 @@ function dashTiempos(d) {
                  Esta tarjeta mide el tiempo entre un arrastre y el siguiente, así que se
                  llena sola a medida que el equipo use el tablero.</div>`}
         <div class="dash-pie">Mediana del tiempo que una tarjeta pasa en la etapa antes de
-            avanzar. Solo cuenta los saltos <b>ya ocurridos</b>: lo que está parado ahora
+            avanzar, con los saltos <b>ocurridos en el periodo</b>: lo que está parado ahora
             se ve abajo, en Estancadas.</div>
     </div>`;
 }
@@ -5241,7 +5591,7 @@ function dashEstancadas(d) {
                 ? `Se muestran las <b>${d.estancadas.length}</b> más viejas de <b>${d.totalEstancadas}</b>. `
                 : ''}
             Una conversación que nadie movió cuenta desde que entró, no desde cero.
-            Clic para abrir el chat.
+            Siempre es de <b>hoy</b>, sin importar el periodo. Clic para abrir el chat.
         </div>
     </div>`;
 }
@@ -5265,7 +5615,8 @@ function dashOperacion(d) {
         <div class="dash-pie">
             <b>Esperando respuesta</b> son las conversaciones sin archivar cuyo último mensaje
             es del cliente. <b>Ventana abierta</b> es a cuántas se les puede escribir texto libre
-            ahora mismo.
+            ahora mismo. Es el estado de <b>hoy</b>: la memoria del bot no sella la hora de
+            cada mensaje, así que no se puede repartir por periodo.
         </div>
     </div>`;
 }
@@ -6288,6 +6639,7 @@ function alternarAvisos() {
 // no cambien, no se pide nada mas; cuando cambian, se baja la bandeja completa
 // y `revisarNovedades()` decide si hay algo que anunciar.
 async function latir() {
+    plRevisarCambioDeMes();
     try {
         const d = await fetchAPI('latido');
         // La sesion caduca y /api/* empieza a responder 401. Es un fallo real
@@ -6331,9 +6683,14 @@ function sessionsSignature() {
     const cols = (currentView === 'archived' || currentView === 'pipeline')
         ? Object.keys(sessionsByCol)
         : [currentCollection];
+    // El cierre tambien: una tarjeta que salio y volvio al mismo carril desde
+    // otro equipo cambia de mes sin cambiar de etapa. (El cambio de mes sin
+    // movimientos NO se detecta aqui —la huella solo se compara consigo misma
+    // dentro de un refresco—: lo vigila plRevisarCambioDeMes en el latido.)
     return cols
         .flatMap(col => (sessionsByCol[col] || []).map(s =>
-            s.id + ':' + s.messageCount + ':' + (s.lastSeen || '') + ':' + plEtapaDe(s)))
+            s.id + ':' + s.messageCount + ':' + (s.lastSeen || '') + ':' + plEtapaDe(s) + ':' +
+            ((s.pipeline && s.pipeline.cerradoEn) || '')))
         .join('|');
 }
 
