@@ -841,6 +841,106 @@ app.post('/api/send', auth.conModulo('conversaciones'), async (req, res) => {
     }
 });
 
+// El numero real del cliente con indicativo (573001112233), o null. Misma
+// regla que resolvePhone() del panel: las identidades nuevas de Meta
+// (CO.1586524026432871) no traen telefono y a esas no hay a quien mandarles
+// el link del asesor.
+function telefonoCliente(phoneNumber, sessionId) {
+    const d = String(phoneNumber || sessionId || '').replace(/\D/g, '');
+    if (/^57\d{10}$/.test(d)) return d;
+    if (/^3\d{9}$/.test(d)) return '57' + d;
+    return null;
+}
+
+// POST /api/chats/:telefono/traspaso-asesor  { collection, id }
+// Le pide a n8n (workflow koski-traspaso-asesor) que resuma la conversacion
+// con Koski y le mande al cliente el link del WhatsApp del asesor.
+//
+// A diferencia de Manual, Koski NO se pausa: el modo del chat no se toca, y si
+// el cliente vuelve a escribir por aqui, el bot le sigue contestando.
+//
+// El telefono, el nombre y el sessionId salen de Mongo y no del navegador,
+// igual que en /api/pedidos/notificar: el mensaje le llega a un cliente. El
+// :telefono de la ruta solo se usa para comprobar que el panel y la base
+// hablan del mismo chat.
+app.post('/api/chats/:telefono/traspaso-asesor', auth.conModulo('conversaciones'), async (req, res) => {
+    try {
+        const { collection, id } = req.body || {};
+        if (collection !== 'wa_chats') {
+            return res.status(400).json({ error: 'el traspaso solo esta disponible para chats de WhatsApp' });
+        }
+        if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'id invalido' });
+
+        if (!process.env.N8N_TRASPASO_URL || !process.env.N8N_TRASPASO_TOKEN) {
+            return res.status(503).json({ error: 'falta N8N_TRASPASO_URL o N8N_TRASPASO_TOKEN en el .env' });
+        }
+
+        const doc = await db.collection(collection).findOne({ _id: new ObjectId(id) });
+        if (!doc) return res.status(404).json({ error: 'No encontrado' });
+        if (doc.sessionId == null) {
+            return res.status(400).json({ error: 'esta conversacion no tiene identidad, no se le puede escribir' });
+        }
+
+        const sessionId = String(doc.sessionId);
+        const contacto = (await loadContacts())[sessionId];
+        const telefono = telefonoCliente(contacto ? contacto.phoneNumber : null, sessionId);
+        if (!telefono) {
+            return res.status(400).json({ error: 'este cliente no tiene un numero de WhatsApp conocido' });
+        }
+        if (String(req.params.telefono || '').replace(/\D/g, '') !== telefono) {
+            return res.status(400).json({ error: 'el telefono no corresponde a esta conversacion; recarga el chat' });
+        }
+
+        // El link va como texto libre, asi que corre la misma suerte que
+        // /api/send: con la ventana vencida Meta lo acepta y no lo entrega, y
+        // n8n responderia ok. Se corta aqui para no mostrar como enviado algo
+        // que el cliente nunca va a ver.
+        const ventana = ventana24(contacto ? contacto.lastSeen : null);
+        if (ventana.abierta === false) {
+            return res.status(409).json({ error: errorVentana(ventana, 'hacer el traspaso'), ventana });
+        }
+
+        let respuesta;
+        try {
+            const r = await fetch(process.env.N8N_TRASPASO_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Koski-Token': process.env.N8N_TRASPASO_TOKEN
+                },
+                body: JSON.stringify({
+                    telefono,
+                    nombre: (contacto && contacto.name) || '',
+                    sessionId
+                }),
+                // Mas holgado que /api/send: antes de enviar, n8n le pide el
+                // resumen de la conversacion a un modelo.
+                signal: AbortSignal.timeout(60000)
+            });
+            respuesta = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                return res.status(502).json({ error: respuesta.error || 'n8n respondio ' + r.status });
+            }
+        } catch (err) {
+            return res.status(502).json({ error: 'no se pudo contactar n8n: ' + err.message });
+        }
+
+        if (!respuesta.ok) {
+            return res.status(502).json({ error: respuesta.error || 'WhatsApp no acepto el mensaje del traspaso' });
+        }
+
+        auditoria.registrar(req, 'chat.traspaso', collection + '/' + id, {
+            telefono,
+            wamid: respuesta.id || null,
+            resumen: String(respuesta.resumen || '').slice(0, 120)
+        });
+
+        res.json({ ok: true, resumen: respuesta.resumen || null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 /* --- Pipeline ----------------------------------------------------------
    Dos rutas de escritura sobre el subdocumento `pipeline` del chat. Las dos
    escriben campos sueltos con $set/$push, nunca el documento entero: el
