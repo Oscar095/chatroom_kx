@@ -1125,6 +1125,26 @@
         .ventana-aviso b { color: var(--kos-orange-deep); }
         .chat-area.has-chat.ventana-cerrada .ventana-aviso { display: block; }
 
+        /* Traspaso al WhatsApp del asesor. Mismo alto y forma de pastilla que
+           el selector de modo, en el verde de WhatsApp porque el resultado es
+           un mensaje que le llega al cliente por alla. */
+        .btn-traspaso {
+            flex-shrink: 0;
+            border: 0;
+            border-radius: 99px;
+            background: #25D366;
+            color: #fff;
+            font-family: var(--font);
+            font-size: 12px; font-weight: 600;
+            padding: 8px 14px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: filter .18s;
+        }
+        .btn-traspaso:hover:not(:disabled) { filter: brightness(.94); }
+        .btn-traspaso:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-traspaso.enviando { cursor: wait; }
+
         .mode-switch button:disabled { opacity: .4; cursor: not-allowed; }
         .mode-switch button:disabled:hover { color: var(--ink-muted); }
         .composer textarea:disabled { opacity: .5; cursor: not-allowed; }
@@ -2526,6 +2546,10 @@
             <button data-mode="auto" onclick="setMode('auto')">Automático</button>
             <button data-mode="manual" onclick="setMode('manual')">Manual</button>
         </div>
+        <button class="btn-traspaso" id="traspasoBtn" type="button" onclick="traspasarAsesor()"
+                title="Envía al cliente el link del WhatsApp del asesor (Koski sigue activo)">
+            📲 Traspasar a asesor
+        </button>
         <a class="icon-btn" id="waWebBtn" href="#" target="_blank" rel="noopener"
            title="Escribir al cliente en WhatsApp Web" aria-label="Escribir al cliente en WhatsApp Web">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -3219,6 +3243,14 @@ function aplicarVentana() {
     document.getElementById('composerText').disabled = cerrada;
     document.getElementById('sendBtn').disabled = cerrada;
 
+    // El link del asesor tambien es texto libre: con la ventana vencida Meta
+    // lo acepta y no lo entrega.
+    const traspaso = document.getElementById('traspasoBtn');
+    traspaso.disabled = cerrada || traspasoEnviando;
+    traspaso.title = cerrada
+        ? 'No se puede traspasar: la ventana de 24 h está cerrada'
+        : 'Envía al cliente el link del WhatsApp del asesor (Koski sigue activo)';
+
     if (cerrada) {
         document.getElementById('ventanaAviso').innerHTML =
             '<b>La ventana de 24 horas de WhatsApp está cerrada.</b> El cliente no escribe hace ' +
@@ -3248,6 +3280,11 @@ function updateChatControls(data) {
 
     // El chat web no admite ni modo manual ni escribirle: se ocultan.
     document.getElementById('modeSwitch').style.display = isWeb ? 'none' : '';
+
+    // El traspaso necesita un numero real al que mandar el link: no aplica al
+    // chat web ni a las identidades de Meta sin telefono.
+    currentName = data.name || null;
+    document.getElementById('traspasoBtn').style.display = (currentPhone && !isWeb) ? '' : 'none';
 
     const wa = document.getElementById('waWebBtn');
     if (currentPhone && !isWeb) {
@@ -3290,6 +3327,52 @@ async function setMode(mode) {
             : 'El bot vuelve a responder');
     } catch (err) {
         showToast('No se pudo cambiar el modo: ' + err.message);
+    }
+}
+
+/* Traspaso al asesor: n8n resume la conversacion con Koski y le manda al
+   cliente el link del WhatsApp del asesor. A diferencia de Manual, el bot NO
+   se pausa y el modo del chat no cambia. */
+let currentName = null;
+let traspasoEnviando = false;
+const TEXTO_TRASPASO = '📲 Traspasar a asesor';
+
+async function traspasarAsesor() {
+    if (!currentSession || !currentPhone || traspasoEnviando) return;
+    if (currentSessionCol === 'wa_chats_web') return;
+
+    const quien = currentName || ('+' + currentPhone);
+    if (!confirm('¿Enviar a ' + quien + ' el link del WhatsApp del asesor?\n\nKoski sigue activo en esta conversación.')) return;
+
+    // Se fija el chat al que se le hace el traspaso: si el asesor abre otro
+    // mientras n8n responde, el aviso no debe confundirse con el chat nuevo.
+    const telefono = currentPhone;
+    const btn = document.getElementById('traspasoBtn');
+    traspasoEnviando = true;
+    btn.disabled = true;
+    btn.classList.add('enviando');
+    btn.textContent = 'Enviando…';
+    try {
+        const r = await fetch('/api/chats/' + encodeURIComponent(telefono) + '/traspaso-asesor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection: currentSessionCol, id: currentSession })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) {
+            if (d.ventana) { currentVentana = d.ventana; }
+            throw new Error(d.error || 'el servidor respondió ' + r.status);
+        }
+        showToast('Link del asesor enviado a ' + quien);
+    } catch (err) {
+        // alert y no toast: el motivo (p. ej. la ventana de 24 h) es largo y
+        // el asesor tiene que leerlo para saber que hacer.
+        alert('No se pudo hacer el traspaso:\n\n' + err.message);
+    } finally {
+        traspasoEnviando = false;
+        btn.classList.remove('enviando');
+        btn.textContent = TEXTO_TRASPASO;
+        aplicarVentana();
     }
 }
 
@@ -6984,6 +7067,7 @@ const ACCIONES = {
     'chat.desarchivar':          'Sacó una conversación del archivo',
     'chat.modo':                 'Cambió el modo del bot',
     'chat.enviar':               'Le escribió al cliente',
+    'chat.traspaso':             'Traspasó al cliente al WhatsApp del asesor',
     'pipeline.mover':            'Movió una tarjeta de etapa',
     'pipeline.nota':             'Escribió una nota',
     'pipeline.nota.borrar':      'Borró una nota',
