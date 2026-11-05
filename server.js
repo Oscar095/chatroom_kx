@@ -841,6 +841,13 @@ app.post('/api/send', auth.conModulo('conversaciones'), async (req, res) => {
     }
 });
 
+// URL del webhook de produccion de n8n. Se puede pisar con N8N_TRASPASO_URL
+// (p. ej. para apuntar a /webhook-test/ mientras se prueba en el editor).
+function urlTraspaso() {
+    return process.env.N8N_TRASPASO_URL ||
+        'https://kosworkflows.app.n8n.cloud/webhook/koski-traspaso-asesor';
+}
+
 // El numero real del cliente con indicativo (573001112233), o null. Misma
 // regla que resolvePhone() del panel: las identidades nuevas de Meta
 // (CO.1586524026432871) no traen telefono y a esas no hay a quien mandarles
@@ -871,8 +878,8 @@ app.post('/api/chats/:telefono/traspaso-asesor', auth.conModulo('conversaciones'
         }
         if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'id invalido' });
 
-        if (!process.env.N8N_TRASPASO_URL || !process.env.N8N_TRASPASO_TOKEN) {
-            return res.status(503).json({ error: 'falta N8N_TRASPASO_URL o N8N_TRASPASO_TOKEN en el .env' });
+        if (!process.env.N8N_TRASPASO_TOKEN) {
+            return res.status(503).json({ error: 'falta N8N_TRASPASO_TOKEN en el .env' });
         }
 
         const doc = await db.collection(collection).findOne({ _id: new ObjectId(id) });
@@ -902,7 +909,7 @@ app.post('/api/chats/:telefono/traspaso-asesor', auth.conModulo('conversaciones'
 
         let respuesta;
         try {
-            const r = await fetch(process.env.N8N_TRASPASO_URL, {
+            const r = await fetch(urlTraspaso(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
