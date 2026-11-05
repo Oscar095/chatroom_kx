@@ -1126,22 +1126,23 @@
         .chat-area.has-chat.ventana-cerrada .ventana-aviso { display: block; }
 
         /* Traspaso al WhatsApp del asesor. Mismo alto y forma de pastilla que
-           el selector de modo, en el verde de WhatsApp porque el resultado es
-           un mensaje que le llega al cliente por alla. */
+           el selector de modo. Verde de la familia de WhatsApp, pero oscuro: el
+           #25D366 de la marca da 1.98:1 con texto blanco; este da 5.4:1 (AA). */
         .btn-traspaso {
             flex-shrink: 0;
             border: 0;
             border-radius: 99px;
-            background: #25D366;
+            background: #137A3F;
             color: #fff;
             font-family: var(--font);
             font-size: 12px; font-weight: 600;
             padding: 8px 14px;
             cursor: pointer;
             white-space: nowrap;
-            transition: filter .18s;
+            transition: background .18s;
         }
-        .btn-traspaso:hover:not(:disabled) { filter: brightness(.94); }
+        .btn-traspaso:hover:not(:disabled) { background: #0F6B37; }
+        .btn-traspaso:focus-visible { outline: 2px solid #137A3F; outline-offset: 2px; }
         .btn-traspaso:disabled { opacity: .5; cursor: not-allowed; }
         .btn-traspaso.enviando { cursor: wait; }
 
