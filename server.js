@@ -111,6 +111,9 @@ function filterMessages(messages) {
             // Y CUAL asesor. Los mensajes anteriores al login no lo traen: ahi
             // queda null y el panel solo dice "asesor", como siempre.
             usuario: m.data?.additional_kwargs?.usuario || null,
+            // Solo lo traen los mensajes que escribe el ChatRoom (hoy, el del
+            // traspaso). La memoria del bot no guarda hora por mensaje.
+            enviadoEn: m.data?.additional_kwargs?.enviadoEn || null,
             content: cleanContent(m.data?.content)
         }))
         .filter(m => m.content.trim());
@@ -437,6 +440,8 @@ app.get('/api/sessions', auth.conAlgunModulo(['conversaciones', 'pipeline']), as
                 archivedAt,
                 reopened,
                 mode: doc.mode === 'manual' ? 'manual' : 'auto',
+                // { en, por } del ultimo traspaso al asesor, o null.
+                traspaso: doc.traspaso || null,
                 // The chat memory stores no per-message timestamps. The ObjectId
                 // gives the conversation start; contacts.lastSeen the last message.
                 startedAt: doc._id.getTimestamp().toISOString(),
@@ -544,6 +549,7 @@ app.get('/api/messages', auth.conModulo('conversaciones'), async (req, res) => {
             ventana: ventana24(contact ? contact.lastSeen : null),
             archivedAt: doc.archivedAt || null,
             mode: doc.mode === 'manual' ? 'manual' : 'auto',
+            traspaso: doc.traspaso || null,
             messages: filterMessages(doc.messages),
             media: await loadMedia(sid)
         });
@@ -936,13 +942,50 @@ app.post('/api/chats/:telefono/traspaso-asesor', auth.conModulo('conversaciones'
             return res.status(502).json({ error: respuesta.error || 'WhatsApp no acepto el mensaje del traspaso' });
         }
 
+        // El mensaje lo manda n8n, no el ChatRoom, asi que sin esto no queda
+        // en el hilo: el asesor no lo ve y Koski -que sigue activo- tampoco
+        // sabe que ya le paso el link. Se guarda como 'ai' por la misma razon
+        // que en /api/send: del lado del cliente es el negocio quien habla.
+        //
+        // Si n8n devuelve `mensaje` (el texto que salio por WhatsApp) se guarda
+        // ese; si no, una nota que dice lo que paso sin inventar el texto.
+        const enviadoEn = new Date().toISOString();
+        const texto = String(respuesta.mensaje || '').trim() ||
+            '📲 Se le envió al cliente el link del WhatsApp del asesor.';
+
+        await db.collection(collection).updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $push: {
+                    messages: {
+                        type: 'ai',
+                        data: {
+                            content: texto,
+                            tool_calls: [],
+                            invalid_tool_calls: [],
+                            additional_kwargs: {
+                                sentBy: 'traspaso',
+                                usuario: req.usuario.usuario,
+                                enviadoEn
+                            },
+                            response_metadata: {}
+                        }
+                    }
+                },
+                // El ultimo traspaso, para el chip de la bandeja y el aviso de
+                // reenvio. Campo suelto con $set, como `mode` y `archivedAt`.
+                $set: { traspaso: { en: enviadoEn, por: req.usuario.usuario } }
+            }
+        );
+
         auditoria.registrar(req, 'chat.traspaso', collection + '/' + id, {
             telefono,
             wamid: respuesta.id || null,
             resumen: String(respuesta.resumen || '').slice(0, 120)
         });
 
-        res.json({ ok: true, resumen: respuesta.resumen || null });
+        res.json({ ok: true, resumen: respuesta.resumen || null,
+                   traspaso: { en: enviadoEn, por: req.usuario.usuario } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

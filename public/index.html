@@ -1070,6 +1070,20 @@
            INTERVENCION DEL ASESOR
            ================================================================ */
         .row-chip.manual { color: var(--kos-orange); }
+        /* La lista va sobre el fondo oscuro del shell: ahi el verde claro se
+           lee bien. El chip del encabezado va sobre fondo claro y usa el oscuro. */
+        .row-chip.traspaso { color: #4ADE80; }
+        .meta-chip.traspaso {
+            font-family: var(--font); font-weight: 600;
+            color: #0F6B37;
+            background: rgba(19,122,63,.10);
+            border-color: rgba(19,122,63,.30);
+        }
+        .msg.ai.traspaso .msg-card { box-shadow: inset 3px 0 0 #137A3F; }
+        .msg.ai.traspaso .msg-who { color: #137A3F; }
+        :root[data-theme="dark"] .meta-chip.traspaso { color: #4ADE80; border-color: rgba(74,222,128,.35); }
+        :root[data-theme="dark"] .msg.ai.traspaso .msg-who { color: #4ADE80; }
+        :root[data-theme="dark"] .msg.ai.traspaso .msg-card { box-shadow: inset 3px 0 0 #4ADE80; }
 
         .mode-switch {
             display: inline-flex;
@@ -2998,7 +3012,8 @@ function sessionCard(s, isWeb, index, opts = {}) {
         `<div class="session-date" title="${escapeAttr(formatFullDate(s.lastSeen || s.startedAt))}">${formatDate(s.lastSeen || s.startedAt)}</div>`;
     // El chip de Manual avisa desde la lista que el bot está en pausa ahí, sin
     // tener que abrir la conversación para darse cuenta.
-    const manual = s.mode === 'manual' ? '<span class="row-chip manual">Manual</span> ' : '';
+    const manual = (s.mode === 'manual' ? '<span class="row-chip manual">Manual</span> ' : '') +
+        (s.traspaso ? '<span class="row-chip traspaso" title="Ya se le envió el link del asesor">Traspasado</span> ' : '');
     const preview = opts.preview !== undefined
         ? opts.preview
         : `${manual}${s.lastType === 'ai' ? '<b>Bot:</b> ' : ''}${escapeHtml(truncate(s.lastMessage, 42))}`;
@@ -3285,6 +3300,7 @@ function updateChatControls(data) {
     // El traspaso necesita un numero real al que mandar el link: no aplica al
     // chat web ni a las identidades de Meta sin telefono.
     currentName = data.name || null;
+    currentTraspaso = data.traspaso || null;
     document.getElementById('traspasoBtn').style.display = (currentPhone && !isWeb) ? '' : 'none';
 
     const wa = document.getElementById('waWebBtn');
@@ -3335,6 +3351,8 @@ async function setMode(mode) {
    cliente el link del WhatsApp del asesor. A diferencia de Manual, el bot NO
    se pausa y el modo del chat no cambia. */
 let currentName = null;
+// { en, por } del ultimo traspaso de este chat, o null. Lo manda el servidor.
+let currentTraspaso = null;
 let traspasoEnviando = false;
 const TEXTO_TRASPASO = '📲 Traspasar a asesor';
 
@@ -3343,11 +3361,19 @@ async function traspasarAsesor() {
     if (currentSessionCol === 'wa_chats_web') return;
 
     const quien = currentName || ('+' + currentPhone);
-    if (!confirm('¿Enviar a ' + quien + ' el link del WhatsApp del asesor?\n\nKoski sigue activo en esta conversación.')) return;
+    // Si ya se le mando, se dice cuando y quien antes de repetirlo: el link
+    // duplicado le llega al cliente igual.
+    const pregunta = currentTraspaso
+        ? 'A ' + quien + ' ya se le envió el link del asesor el ' + formatFullDate(currentTraspaso.en) +
+          (currentTraspaso.por ? ' (' + currentTraspaso.por + ')' : '') + '.\n\n¿Enviarlo otra vez?'
+        : '¿Enviar a ' + quien + ' el link del WhatsApp del asesor?\n\nKoski sigue activo en esta conversación.';
+    if (!confirm(pregunta)) return;
 
     // Se fija el chat al que se le hace el traspaso: si el asesor abre otro
     // mientras n8n responde, el aviso no debe confundirse con el chat nuevo.
     const telefono = currentPhone;
+    const sesion = currentSession;
+    const coleccion = currentSessionCol;
     const btn = document.getElementById('traspasoBtn');
     traspasoEnviando = true;
     btn.disabled = true;
@@ -3357,14 +3383,21 @@ async function traspasarAsesor() {
         const r = await fetch('/api/chats/' + encodeURIComponent(telefono) + '/traspaso-asesor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ collection: currentSessionCol, id: currentSession })
+            body: JSON.stringify({ collection: coleccion, id: sesion })
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) {
-            if (d.ventana) { currentVentana = d.ventana; }
+            if (d.ventana && currentSession === sesion) currentVentana = d.ventana;
             throw new Error(d.error || 'el servidor respondió ' + r.status);
         }
         showToast('Link del asesor enviado a ' + quien);
+
+        // Se anota en la lista y se recarga el hilo para ver el mensaje ya
+        // guardado, como en sendMessage(). Solo si el asesor sigue en ese chat.
+        const s = findSession(sesion);
+        if (s) s.traspaso = d.traspaso || null;
+        if (currentSession === sesion) await openSession(sesion, coleccion);
+        else renderCurrentView();
     } catch (err) {
         // alert y no toast: el motivo (p. ej. la ventana de 24 h) es largo y
         // el asesor tiene que leerlo para saber que hacer.
@@ -6003,6 +6036,10 @@ async function openSession(docId, colOverride) {
         chips.push(['', messages.length + ' mensajes']);
         if (data.startedAt) chips.push(['', 'Inicio ' + formatFullDate(data.startedAt)]);
         if (data.lastSeen) chips.push(['', 'Último ' + formatFullDate(data.lastSeen)]);
+        if (data.traspaso) {
+            chips.push(['traspaso', '📲 Traspasado ' + formatFullDate(data.traspaso.en) +
+                (data.traspaso.por ? ' · ' + data.traspaso.por : '')]);
+        }
         document.getElementById('chatInfo').innerHTML = chips
             .map(([cls, text]) => `<span class="meta-chip ${cls}">${escapeHtml(text)}</span>`)
             .join('');
@@ -6019,9 +6056,14 @@ async function openSession(docId, colOverride) {
         messages.forEach((m, i) => {
             const type = m.type || 'human';
             // Bot y asesor se guardan los dos como 'ai'; sentBy los separa.
-            const esAsesor = m.sentBy === 'asesor';
-            const label = type === 'ai' ? (esAsesor ? 'Asesor' : 'Bot KosXpress') : userLabel;
-            let body, sello = '';
+            // El traspaso tambien cuenta como del asesor: lo disparo el, no Koski.
+            const esTraspaso = m.sentBy === 'traspaso';
+            const esAsesor = m.sentBy === 'asesor' || esTraspaso;
+            const label = type !== 'ai' ? userLabel
+                : esTraspaso ? '📲 Traspaso a asesor' + (m.usuario ? ' · ' + m.usuario : '')
+                : esAsesor ? 'Asesor'
+                : 'Bot KosXpress';
+            let body, sello = esTraspaso ? stampFor(m.enviadoEn, data.startedAt) : '';
             if (type === 'human' && IMG_MARKER.test(m.content)) {
                 // Every stored file produces exactly one marker message, so the
                 // Nth marker is the Nth file. The chat memory has no timestamps,
@@ -6034,7 +6076,7 @@ async function openSession(docId, colOverride) {
                 body = formatMarkdown(m.content);
             }
             html += `
-                <div class="msg ${type}${esAsesor ? ' asesor' : ''}" style="animation-delay:${Math.min(i * 26, 460)}ms">
+                <div class="msg ${type}${esAsesor ? ' asesor' : ''}${esTraspaso ? ' traspaso' : ''}" style="animation-delay:${Math.min(i * 26, 460)}ms">
                     <div class="msg-who">${escapeHtml(label)}</div>
                     <div class="msg-card">${body}</div>
                     ${sello ? `<div class="msg-time">${escapeHtml(sello)}</div>` : ''}
